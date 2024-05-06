@@ -148,6 +148,15 @@ class SnakeGameEnv(gym.Env):
             plt.close(self.window)
             self.window = None
 
+def make_env(seed, **kwargs):
+    def _init():
+        env = SnakeGameEnv(**kwargs)
+        env.reset(seed=seed)
+        return env
+
+    return _init
+
+
 if __name__ == '__main__':
     game = SnakeGameEnv(20,20, render_mode = "human")
     game.render()
