@@ -280,7 +280,9 @@ def main(args: BasicArgs):
 
                 best_score = max(new_score, best_score)
 
-    
+        # final evaluation with more envs
+        args.n_envs *= 3
+        evaluate_model(qnet, args, logger, args.epochs, max_steps=args.max_eval_steps)
 
     finally:
         print("still here (:")
