@@ -71,8 +71,6 @@ class DoubleQNET(nn.Module):
         elif self.args.update_mode == UpdateModes.polyak and step % self.args.update_freq == 0:
             self.polyak_average()
             
-        else:
-            raise NotImplementedError()
         
     def polyak_average(self):
         with torch.no_grad():

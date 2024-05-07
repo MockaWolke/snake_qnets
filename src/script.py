@@ -280,10 +280,10 @@ def main(args: BasicArgs):
 
                 best_score = max(new_score, best_score)
 
-    except Exception as e:
-        print("error", e)
+    
 
     finally:
+        print("still here (:")
         if args.use_wandb:
             wandb.save(os.path.join(ckpt_path, "*.ckpt"))
 
