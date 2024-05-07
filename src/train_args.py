@@ -28,6 +28,10 @@ class BasicArgs(BaseModel):
     eps_anneal_steps : int = 50000
     min_lr : Optional[float] = None
     max_eval_steps : int = 10000
+    wandb_mode : str = "offline"
+    use_wandb : bool = True
+    run_group : Optional[str] = None
+    
     
     def __init__(self, *args, **kwargs):
         
@@ -37,6 +41,7 @@ class BasicArgs(BaseModel):
             self.run_name = self.run_name + "_test"
             self.epochs = 2
             self.steps_per_epoch = 2
+            self.use_wandb = False
         
         
         if self.device is None:
