@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from train_args import BasicArgs
+from train_args import BasicArgs, UpdateModes
 import copy
 import numpy as np
 
@@ -62,9 +62,23 @@ class DoubleQNET(nn.Module):
     def learning_rate(self, value):
         self.optim.param_groups[0]['lr'] = value
         
-    def update_target_model(self):
+    def update_target_model(self, step):
         
-        self.target_model = copy.deepcopy(self.model)
+        # if hard copy
+        if self.args.update_mode == UpdateModes.epoch_copy and step % self.args.steps_per_epoch == 0:
+            self.target_model = copy.deepcopy(self.model)
+        
+        elif self.args.update_mode == UpdateModes.polyak and step % self.args.update_freq == 0:
+            self.polyak_average()
+            
+        else:
+            raise NotImplementedError()
+        
+    def polyak_average(self):
+        with torch.no_grad():
+            for target_param, local_param in zip(self.target_model.parameters(), self.model.parameters()):
+                target_param.data.copy_((1 - self.args.theta) * target_param.data + self.args.theta * local_param.data)
+
         
         
     def step(self, batch):

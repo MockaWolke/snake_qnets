@@ -3,6 +3,11 @@ import sys
 from pydantic import BaseModel
 from datetime import datetime
 import torch
+from enum import Enum
+
+class UpdateModes(str, Enum):
+    epoch_copy = 'epoch'
+    polyak = 'polyak'
 
 class BasicArgs(BaseModel):
     n_envs : int = 7
@@ -31,6 +36,9 @@ class BasicArgs(BaseModel):
     wandb_mode : str = "offline"
     use_wandb : bool = True
     run_group : Optional[str] = None
+    update_mode : UpdateModes = UpdateModes.epoch_copy
+    update_freq : int = 1
+    theta : float = 0.005
     
     
     def __init__(self, *args, **kwargs):

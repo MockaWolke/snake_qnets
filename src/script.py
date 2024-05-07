@@ -152,7 +152,7 @@ def evaluate_model(
 
     print(f"Eval Results Epoch {epoch}:")
     print(
-        f"\Rewards: min: {min_reward:.1f}, max: {max_reward:.1f}, mean: {mean_reward:.1f} +- {std_mean:.2f}"
+        f"\tRewards: min: {min_reward:.1f}, max: {max_reward:.1f}, mean: {mean_reward:.1f} +- {std_mean:.2f}"
     )
     print(
         f"\tSteps: min: {min_step:.1f}, max: {max_step:.1f}, mean: {mean_step:.1f} +- {std_steps:.2f}"
@@ -256,11 +256,12 @@ def main(args: BasicArgs):
                 losses.append(loss.numpy())
 
                 global_step += 1
+                # call this every step for polyiak avering
+                qnet.update_target_model(global_step)
 
             loss = np.mean(losses)
             logger.add_scalar("EpochLoss", loss, epoch)
 
-            qnet.update_target_model()
             buffer.fill_epoch(envs, qnet)
 
             if epoch % args.eval_freq == 0:
