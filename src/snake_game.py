@@ -1,5 +1,4 @@
 import numpy as np
-from numpy.random import randint
 import gymnasium as gym
 from gymnasium import spaces
 import matplotlib.pyplot as plt
@@ -18,6 +17,7 @@ class SnakeGame(gym.Env):
         grass_growth=0,
         max_grass=0,
         render_mode=None,
+        seed = None
     ):
         "Initialize board"
         super(SnakeGame, self).__init__()
@@ -43,20 +43,26 @@ class SnakeGame(gym.Env):
         self.window = None
         self.clock = None
         self.reset()
+        
+        self.seed(seed)
+        
+    def seed(self, seed=None):
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]
 
     def create_apples(self):
         "create a new apple away from the snake"
         while len(self.apples) < self.food_amount:
-            apple = (randint(0, self.height - 1), randint(0, self.width - 1))
+            apple = (self.np_random.integers(0, self.height - 1), self.np_random.integers(0, self.width - 1))
             while apple in self.snake:
-                apple = (randint(0, self.height - 1), randint(0, self.width - 1))
+                apple = (self.np_random.integers(0, self.height - 1), self.np_random.integers(0, self.width - 1))
             self.apples.append(apple)
 
     def create_snake(self):
         "create a snake, size 3, at random position and orientation"
-        x = randint(5, self.width - 5)  # not t0o close to border
-        y = randint(5, self.height - 5)
-        self.direction = randint(0, 4)
+        x = self.np_random.integers(5, self.width - 5)  # not t0o close to border
+        y = self.np_random.integers(5, self.height - 5)
+        self.direction = self.np_random.integers(0, 4)
         self.snake = []
         for i in range(5):
             if self.direction == 0:
