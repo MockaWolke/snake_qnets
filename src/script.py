@@ -11,6 +11,7 @@ from train_args import BasicArgs, parse_args
 from models import DoubleQNET
 from collections import deque
 import wandb
+import shutil
 
 
 class ReplayBuffer:
@@ -157,6 +158,8 @@ def evaluate_model(
         f"\tSteps: min: {min_step:.1f}, max: {max_step:.1f}, mean: {mean_step:.1f} +- {std_steps:.2f}"
     )
 
+    return mean_reward
+
 
 def main(args: BasicArgs):
 
@@ -171,7 +174,7 @@ def main(args: BasicArgs):
 
     if args.use_wandb:
         print("Using Wandb!")
-        wandb.tensorboard.patch(root_logdir = log_path)
+        wandb.tensorboard.patch(root_logdir=log_path)
         wandb.init(
             project="snake",
             config=args.model_dump(),
@@ -181,7 +184,7 @@ def main(args: BasicArgs):
             mode=args.wandb_mode,
             sync_tensorboard=True,
         )
-        
+
     logger = SummaryWriter(log_path)
 
     logger.add_text(
@@ -189,7 +192,6 @@ def main(args: BasicArgs):
         "|param|value|\n|-|-|\n%s"
         % ("\n".join([f"|{key}|{value}|" for key, value in args.model_dump().items()])),
     )
-
 
     envs = gym.vector.AsyncVectorEnv(
         [
@@ -214,60 +216,75 @@ def main(args: BasicArgs):
     total_steps = args.epochs * args.steps_per_epoch
     initial_eps = args.eps
     initial_lr = args.lr
+    best_score = -np.inf
 
     print(f"Training for {total_steps} steps")
 
-    for epoch in range(args.epochs):
+    try:
 
-        losses = []
+        for epoch in range(args.epochs):
 
-        for _ in tqdm(range(args.steps_per_epoch), desc=f"Epoch {epoch}/{args.epochs}"):
+            losses = []
 
-            batch = buffer.sample(args.batch_size)
+            for _ in tqdm(
+                range(args.steps_per_epoch), desc=f"Epoch {epoch}/{args.epochs}"
+            ):
 
-            loss = qnet.step(batch)
+                batch = buffer.sample(args.batch_size)
 
-            if global_step < args.eps_anneal_steps:
-                args.eps = args.min_eps + (initial_eps - args.min_eps) * (
-                    1 - global_step / args.eps_anneal_steps
+                loss = qnet.step(batch)
+
+                if global_step < args.eps_anneal_steps:
+                    args.eps = args.min_eps + (initial_eps - args.min_eps) * (
+                        1 - global_step / args.eps_anneal_steps
+                    )
+
+                if args.min_lr is not None:
+                    args.lr = max(
+                        args.min_lr,
+                        initial_lr
+                        - (initial_lr - args.min_lr) * (global_step / total_steps),
+                    )
+                    qnet.learning_rate = args.lr
+
+                logger.add_scalar("StepLoss", loss, global_step)
+                logger.add_scalar("Params/Epsilon", args.eps, global_step)
+                logger.add_scalar(
+                    "Params/Learning_Rate", qnet.learning_rate, global_step
                 )
 
-            if args.min_lr is not None:
-                args.lr = max(
-                    args.min_lr,
-                    initial_lr
-                    - (initial_lr - args.min_lr) * (global_step / total_steps),
+                losses.append(loss.numpy())
+
+                global_step += 1
+
+            loss = np.mean(losses)
+            logger.add_scalar("EpochLoss", loss, epoch)
+
+            qnet.update_target_model()
+            buffer.fill_epoch(envs, qnet)
+
+            if epoch % args.eval_freq == 0:
+
+                new_score = evaluate_model(
+                    qnet, args, logger, epoch, max_steps=args.max_eval_steps
                 )
-                qnet.learning_rate = args.lr
 
-            logger.add_scalar("StepLoss", loss, global_step)
-            logger.add_scalar("Params/Epsilon", args.eps, global_step)
-            logger.add_scalar("Params/Learning_Rate", qnet.learning_rate, global_step)
+                save_path = os.path.join(ckpt_path, "last.ckpt")
+                print("saving to", save_path)
+                torch.save(qnet.state_dict(), save_path)
 
-            losses.append(loss.numpy())
+                if new_score > best_score:
+                    print("best result -> saving as best.ckpt")
+                    shutil.copyfile(save_path, os.path.join(ckpt_path, "best.ckpt"))
 
-            global_step += 1
+                best_score = max(new_score, best_score)
 
-        loss = np.mean(losses)
-        logger.add_scalar("EpochLoss", loss, epoch)
+    except Exception as e:
+        print("error", e)
 
-        qnet.update_target_model()
-        buffer.fill_epoch(envs, qnet)
-
-        if epoch % args.eval_freq == 0:
-
-            evaluate_model(qnet, args, logger, epoch, max_steps=args.max_eval_steps)
-
-        if epoch % args.save_freq == 0:
-
-            save_path = os.path.join(ckpt_path, f"{epoch}.ckpt")
-            print("saving to", save_path)
-
-            torch.save(qnet.state_dict(), save_path)
-            
-            if args.use_wandb:
-                wandb.save(save_path)
-
+    finally:
+        if args.use_wandb:
+            wandb.save(os.path.join(ckpt_path, "*.ckpt"))
 
 
 if __name__ == "__main__":
