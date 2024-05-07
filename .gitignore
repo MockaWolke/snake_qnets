@@ -5,6 +5,7 @@ __pycache__/
 
 wandb
 ckpt
+wandb_key
 
 # C extensions
 *.so
