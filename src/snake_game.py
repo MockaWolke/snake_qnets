@@ -4,66 +4,121 @@ import gymnasium as gym
 from gymnasium import spaces
 import matplotlib.pyplot as plt
 
-class SnakeGameEnv(gym.Env):
-    """Snake game environment compatible with Gymnasium (OpenAI Gym interface)."""
 
-    metadata = {
-        "render_modes": ["human", "rgb_array"],
-        "render_fps": 15
-    }
+class SnakeGame(gym.Env):
+    "Implements the snake game core"
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 15}
 
-    def __init__(self, width=20, height=20, food_amount=1, border=0, grass_growth=0, max_grass=0, render_mode=None):
-        super(SnakeGameEnv, self).__init__()
+    def __init__(
+        self,
+        width=14,
+        height=14,
+        food_amount=1,
+        border=1,
+        grass_growth=0,
+        max_grass=0,
+        render_mode=None,
+    ):
+        "Initialize board"
+        super(SnakeGame, self).__init__()
+
         self.width = width
         self.height = height
+        self.board = np.zeros((height, width, 3), dtype=np.float32)
         self.food_amount = food_amount
         self.border = border
         self.grass_growth = grass_growth
+        self.grass = np.zeros((height, width)) + max_grass
         self.max_grass = max_grass
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=1,
+            shape=(self.height + border * 2, self.width + border * 2, 3),
+            dtype=np.float32,
+        )
+        self.action_space = spaces.Discrete(3, start=-1)
+
         self.render_mode = render_mode
-
-        self.observation_space = spaces.Box(low=0, high=1, shape=(self.height, self.width, 3), dtype=np.float32)
-        self.action_space = spaces.Discrete(3)  # Actions: -1 (left), 0 (straight), 1 (right)
-
-        self.board = np.zeros((self.height, self.width, 3), dtype=np.float32)
-        self.grass = np.zeros((self.height, self.width)) + max_grass
         self.window = None
         self.clock = None
         self.reset()
 
-    def reset(self, seed=None, options=None):
-        """Reset the environment to its initial state."""
-        super().reset(seed=seed)
-        self.score = 0
-        self.done = False
+    def create_apples(self):
+        "create a new apple away from the snake"
+        while len(self.apples) < self.food_amount:
+            apple = (randint(0, self.height - 1), randint(0, self.width - 1))
+            while apple in self.snake:
+                apple = (randint(0, self.height - 1), randint(0, self.width - 1))
+            self.apples.append(apple)
+
+    def create_snake(self):
+        "create a snake, size 3, at random position and orientation"
+        x = randint(5, self.width - 5)  # not t0o close to border
+        y = randint(5, self.height - 5)
         self.direction = randint(0, 4)
         self.snake = []
-        self.apples = []
-        self.grass[:, :] = self.max_grass
-        self.create_snake()
-        self.create_apples()
-        return self.board_state(), {}
+        for i in range(5):
+            if self.direction == 0:
+                y = y + 1
+            elif self.direction == 1:
+                x = x - 1
+            elif self.direction == 2:
+                y = y - 1
+            elif self.direction == 3:
+                x = x + 1
+            self.snake.append((y, x))
+
+    def grow_snake(self, d):
+        "add one position to snake head (0=up, 1=right, 2=down, 3=left)"
+        y, x = self.snake[0]
+        if d == 0:
+            y = y - 1
+        elif d == 1:
+            x = x + 1
+        elif d == 2:
+            y = y + 1
+        else:
+            x = x - 1
+        self.snake.insert(0, (y, x))
+
+    def check_collisions(self):
+        "check if game is over by colliding with edge or itself"
+        # just need to check snake's head
+        x, y = self.snake[0]
+        if (
+            x == -1
+            or x == self.height
+            or y == -1
+            or y == self.width
+            or (x, y) in self.snake[1:]
+        ):
+            self.done = True
 
     def step(self, action):
-        """Move snake/game one step based on action."""
-        direction_change = int(action) - 1
-        self.direction = (self.direction + direction_change) % 4
-        self.grow_snake(self.direction)
-
-        reward = 0
+        """
+        move snake/game one step
+        action can be -1 (turn left), 0 (continue), 1 (turn rignt)
+        """
+        direction = int(action)
+        assert -1 <= direction <= 1
+        self.direction += direction
+        if self.direction < 0:
+            self.direction = 3
+        elif self.direction > 3:
+            self.direction = 0
+        self.grow_snake(self.direction)  # two steps: grow+remove last
         if self.snake[0] in self.apples:
             self.apples.remove(self.snake[0])
             reward = 1
-            self.create_apples()
+            self.create_apples()  # new apple
         else:
             self.snake.pop()
             self.check_collisions()
             if self.done:
-                terminated = True
                 reward = -1
             else:
-                terminated = False
-
+                reward = 0
         if reward >= 0:
             x, y = self.snake[0]
             reward += self.grass[x, y]
@@ -72,65 +127,71 @@ class SnakeGameEnv(gym.Env):
             self.grass += self.grass_growth
             self.grass[self.grass > self.max_grass] = self.max_grass
 
-        observation = self.board_state()
-        return observation, reward, terminated, False, {"score": self.score}
+        return self.board_state(), reward, self.done, False, {"score": self.score}
 
-    def create_apples(self):
-        """Create new apples away from the snake."""
-        while len(self.apples) < self.food_amount:
-            apple = (randint(0, self.height), randint(0, self.width))
-            while apple in self.snake:
-                apple = (randint(0, self.height), randint(0, self.width))
-            self.apples.append(apple)
+    @property
+    def state(self):
+        "easily get current state (score, apple, snake head and tail)"
+        score = self.score
+        apple = self.apples
+        head = self.snake[0]
+        tail = self.snake[1:]
+        return score, apple, head, tail, self.direction
+    
+    
 
-    def create_snake(self):
-        """Create a snake of size 3 at a random position and orientation."""
-        x = randint(5, self.width - 5)
-        y = randint(5, self.height - 5)
-        self.snake = []
-        for _ in range(5):
-            if self.direction == 0:
-                y += 1
-            elif self.direction == 1:
-                x -= 1
-            elif self.direction == 2:
-                y -= 1
-            elif self.direction == 3:
-                x += 1
-            self.snake.append((y, x))
+    def print_state(self):
+        "print the current board state"
+        for i in range(self.height):
+            line = "." * self.width
+            for x, y in self.apples:
+                if y == i:
+                    line = line[:x] + "A" + line[x + 1 :]
+            for s in self.snake:
+                x, y = s
+                if y == i:
+                    line = line[:x] + "X" + line[x + 1 :]
+            print(line)
 
-    def grow_snake(self, d):
-        """Add one position to snake head."""
-        y, x = self.snake[0]
-        if d == 0:
-            y -= 1
-        elif d == 1:
-            x += 1
-        elif d == 2:
-            y += 1
-        else:
-            x -= 1
-        self.snake.insert(0, (y, x))
+    def test_step(self, direction):
+        "to test: move the snake and print the game state"
+        self.step(direction)
+        self.print_state()
+        if self.done:
+            print("Game over! Score=", self.score)
 
-    def check_collisions(self):
-        """Check if game is over by colliding with edge or itself."""
-        y, x = self.snake[0]
-        if x == -1 or x == self.width or y == -1 or y == self.height or (y, x) in self.snake[1:]:
-            self.done = True
+    def reset(self):
+        "reset state"
+        self.score = 0
+        self.done = False
+        self.create_snake()
+        self.apples = []
+        self.create_apples()
+        self.grass[:, :] = self.max_grass
 
-    def board_state(self):
-        """Render the environment state."""
+        return self.board_state(), {"score": self.score}
+
+    def board_state(self, mode="human", close=False):
+        "Render the environment"
         self.board[:, :, :] = 0
         if self.max_grass > 0:
             self.board[:, :, 1] = self.grass / self.max_grass * 0.3
         if not self.done:
-            y, x = self.snake[0]
-            self.board[y, x, :] = 1
-        for y, x in self.snake[1:]:
-            self.board[y, x, 0] = 1
-        for y, x in self.apples:
-            self.board[y, x, 1] = 1
-        return self.board
+            x, y = self.snake[0]
+            self.board[x, y, :] = 1
+        for x, y in self.snake[1:]:
+            self.board[x, y, 0] = 1
+        for x, y in self.apples:
+            self.board[x, y, 1] = 1
+        if self.border == 0:
+            return self.board
+        else:
+            h, w, _ = self.board.shape
+            board = np.full(
+                (h + self.border * 2, w + self.border * 2, 3), 0.5, np.float32
+            )
+            board[self.border : -self.border, self.border : -self.border] = self.board
+            return board
 
     def render(self):
         """Render the environment."""
@@ -148,17 +209,85 @@ class SnakeGameEnv(gym.Env):
             plt.close(self.window)
             self.window = None
 
-def make_env(seed, **kwargs):
+
+def make_env(**kwars):
     def _init():
-        env = SnakeGameEnv(**kwargs)
-        env.reset(seed=seed)
-        return env
+        return SnakeGame(**kwars)
 
     return _init
 
 
-if __name__ == '__main__':
-    game = SnakeGameEnv(20,20, render_mode = "human")
+int_to_dir = {0:"up", 1:'right', 2:'down',3:'left'}
+dir_to_int = dict(zip(int_to_dir.values(), int_to_dir.keys()))
+
+
+
+
+def closest_heuristic(state):
+    score, apple, head, tail, direction = state
+
+    # print("current dir", int_to_dir[direction])
+    
+    apple_y, apple_x = apple[0]
+    head_y,head_x = head
+
+
+    #bigger_x_diff = abs(apple_x - head_x) > abs(apple_y - head_y)
+    bigger_x_diff = abs(apple_x - head_x) > 0
+
+    # print("bigger x diff", bigger_x_diff)
+
+    if bigger_x_diff:
+        
+        goal_dir = "right" if apple_x > head_x else "left"
+
+    else:
+        goal_dir = "down" if apple_y > head_y else "up"
+        
+        
+    # print("goal dir", goal_dir)
+    goal_dir = dir_to_int[goal_dir]
+
+    diff = goal_dir - direction
+
+    if abs(diff) == 0:
+        action = 0
+
+    elif abs(diff) == 1:
+        action = 1 if goal_dir > direction else -1
+        
+    elif abs(diff) == 2: # chose randomly
+        
+        action = 1 if np.random.uniform(0,1)>0.5 else -1
+
+    elif abs(diff) == 3: # go the other way
+
+        action = -1 if goal_dir > direction else 1
+        
+    # print(action)
+    
+
+    return action
+
+
+
+def heuristic_demo(heuristic):
+    game = SnakeGame(30, 30, border=1, render_mode="human")
+    board, _ = game.reset()
+    action_name = {-1: "Turn left", 0: "Straight ahead", 1: "Turn right"}
     game.render()
     
-			
+    while True:
+        
+        new_action = heuristic(game.state)
+        # print("new action", new_action)
+        board, reward, terminated, _, info = game.step(new_action)
+        game.render()
+        
+        if terminated:
+            break
+
+
+if __name__ == "__main__":
+
+    heuristic_demo(closest_heuristic)
