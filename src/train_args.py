@@ -41,7 +41,7 @@ class BasicArgs(BaseModel):
     theta : float = 0.005
     manhatten_fac : float = 0.05
     make_vid : bool = True
-    
+    backbone : str = "normal"
     
     def __init__(self, *args, **kwargs):
         
