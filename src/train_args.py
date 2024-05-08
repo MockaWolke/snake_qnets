@@ -44,6 +44,7 @@ class BasicArgs(BaseModel):
     backbone : str = "normal"
     buffer_alpha : float = 0.0
     buffer_beta : float = 0.0
+    incr_buffbeta : float = 0.0
     
     def __init__(self, *args, **kwargs):
         

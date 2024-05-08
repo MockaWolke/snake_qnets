@@ -48,7 +48,7 @@ class ReplayBuffer:
 
         scaled_scores = self.scores / self.scores.sum()
 
-        indices = random.choices(len(self.replays), k=batchsize, p = scaled_scores)
+        indices = np.random.choice(len(self.replays), size=batchsize, p= scaled_scores)
         
         sample = [self.replays[idx] for idx in indices]
         
