@@ -4,5 +4,5 @@ numpy==1.25.2
 pydantic==2.7.1
 tqdm==4.66.1
 wandb==0.16.6
---extra-index-url 
-https://download.pytorch.org/whl/cu118 torch==2.0.1
+--extra-index-url https://download.pytorch.org/whl/cu118 
+torch==2.0.1
