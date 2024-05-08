@@ -24,10 +24,16 @@ class SnakeGame(gym.Env):
         max_grass=0,
         render_mode=None,
         manhatten_fac = 0,
-        seed = None
+        seed = None,
+        mode = "train",
     ):
         "Initialize board"
         super(SnakeGame, self).__init__()
+
+        if mode != "train" and manhatten_fac!=0:
+            
+            raise ValueError(f"not working with mode {mode}")
+                
 
         self.width = width
         self.height = height

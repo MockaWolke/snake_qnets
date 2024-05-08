@@ -40,6 +40,7 @@ class BasicArgs(BaseModel):
     update_freq : int = 1
     theta : float = 0.005
     manhatten_fac : float = 0.05
+    make_vid : bool = True
     
     
     def __init__(self, *args, **kwargs):
