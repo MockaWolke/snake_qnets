@@ -42,6 +42,8 @@ class BasicArgs(BaseModel):
     manhatten_fac : float = 0.05
     make_vid : bool = True
     backbone : str = "normal"
+    buffer_alpha : float = 0.0
+    buffer_beta : float = 0.0
     
     def __init__(self, *args, **kwargs):
         

@@ -8,7 +8,7 @@ import numpy as np
 
 def prepare_batch(batch, device):
 
-    new_obs, obs, reward, terminated, actions = batch
+    new_obs, obs, reward, terminated, actions, indices, weights = batch
 
     new_obs = torch.tensor(new_obs, dtype=torch.float32, device=device).permute(
         0, 3, 1, 2
@@ -17,8 +17,9 @@ def prepare_batch(batch, device):
     reward = torch.tensor(reward, dtype=torch.float32, device=device)
     terminated = torch.tensor(terminated, dtype=torch.bool, device=device)
     actions = torch.tensor(actions, dtype=torch.long, device=device) + 1
+    weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
-    return new_obs, obs, reward, terminated, actions
+    return new_obs, obs, reward, terminated, actions, indices, weights
 
 
 class SmallCNNBackbone(nn.Module):
@@ -91,7 +92,7 @@ class DoubleQNET(nn.Module):
         self.optim = torch.optim.Adam(self.model.parameters(), args.lr)
 
         self.target_model = copy.deepcopy(self.model)
-        self.criterion = torch.nn.HuberLoss()
+        self.criterion = torch.nn.HuberLoss(reduction="none")
 
     @property
     def learning_rate(self):
@@ -126,9 +127,9 @@ class DoubleQNET(nn.Module):
                     + self.args.theta * local_param.data
                 )
 
-    def step(self, batch):
+    def step(self, batch, update_func):
 
-        new_obs, obs, reward, terminated, actions = prepare_batch(
+        new_obs, obs, reward, terminated, actions, indices, weights = prepare_batch(
             batch, self.args.device
         )
 
@@ -142,13 +143,17 @@ class DoubleQNET(nn.Module):
 
         y_true = reward + self.args.gamma * next_vals
 
-        loss = self.criterion(y_true, pred_vals)
+        loss = (self.criterion(y_true, pred_vals) * weights).mean()
 
         self.optim.zero_grad()
 
         loss.backward()
 
         self.optim.step()
+
+        tde_error = (y_true - pred_vals).detach().cpu().numpy()
+
+        update_func(indices, tde_error)
 
         return loss.detach().cpu()
 

@@ -14,87 +14,10 @@ import wandb
 import shutil
 from utils import make_vid
 from loguru import logger
-
-class ReplayBuffer:
-
-    def __init__(self, args: BasicArgs) -> None:
-        self.replays = deque()
-        self.args = args
-        self.last_ops = None
-
-    def fill(self, values):
-        self.replays.extend(values)
-
-    def sample(self, batchsize):
-
-        sample = random.choices(self.replays, k=batchsize)
-
-        new_obs, obs, reward, terminated, actions = map(np.array, zip(*sample))
-
-        return new_obs, obs, reward, terminated, actions
-
-    def init_fill(self, envs, heuristic):
-
-        old_obs = envs.reset()[0]
-
-        for _ in tqdm(
-            range(int(self.args.buffer_size // self.args.n_envs)),
-            desc="inital buffer fill",
-        ):
-
-            states = envs.get_attr("state")
-            actions = np.array([heuristic(i) for i in states])
-            actions = sample_eps_greedy(actions, self.args.eps)
-
-            new_obs, reward, terminated, _, scores = envs.step(actions)
-
-            packed = list(zip(new_obs, old_obs, reward, terminated, actions))
-
-            self.fill(packed)
-
-            old_obs = new_obs
-
-        self.last_ops = new_obs
-
-    def fill_epoch(self, envs, model: DoubleQNET):
-
-        if len(self.replays) / self.args.buffer_size < 0.95:
-            raise ValueError("Buffer not full")
-
-        n_items = int(self.args.buffer_size / self.args.n_epoch_refill)
-
-        for _ in range(n_items):
-            self.replays.popleft()
-
-        old_obs = self.last_ops
-
-        for _ in tqdm(
-            range(int(np.ceil(n_items / self.args.n_envs))), desc="Sampling new Rounds"
-        ):
-
-            actions = model.get_greedy_action(old_obs)
-            actions = sample_eps_greedy(actions, self.args.eps)
-
-            new_obs, reward, terminated, _, scores = envs.step(actions)
-
-            packed = list(zip(new_obs, old_obs, reward, terminated, actions))
-            self.fill(packed)
-
-            old_obs = new_obs
+from buffer import ReplayBuffer, sample_eps_greedy
 
 
-def sample_eps_greedy(greedy_action, epsilon):
 
-    mask = np.random.uniform(0, 1, greedy_action.shape) < epsilon
-
-    random_actions = np.random.randint(-1, 2, greedy_action.shape)
-
-    new_actions = np.where(mask, greedy_action, random_actions)
-
-    if new_actions.min() < -1 or new_actions.max() > 1:
-        print("the fuck", new_actions)
-        raise ValueError()
-    return new_actions
 
 
 def evaluate_model(
@@ -168,7 +91,7 @@ def evaluate_model(
 
 
 
-def train(args, log_path, ckpt_path):
+def train(args : BasicArgs, log_path, ckpt_path):
     writer = SummaryWriter(log_path)
 
     writer.add_text(
@@ -215,7 +138,7 @@ def train(args, log_path, ckpt_path):
         ):
             batch = buffer.sample(args.batch_size)
 
-            loss = qnet.step(batch)
+            loss = qnet.step(batch, buffer.update)
 
             if global_step < args.eps_anneal_steps:
                 args.eps = args.min_eps + (initial_eps - args.min_eps) * (
@@ -229,12 +152,16 @@ def train(args, log_path, ckpt_path):
                     - (initial_lr - args.min_lr) * (global_step / total_steps),
                 )
                 qnet.learning_rate = args.lr
+                
+                
+            args.buffer_beta = min(1.0, args.buffer_beta + args.incr_buffbeta)
 
             writer.add_scalar("StepLoss", loss, global_step)
             writer.add_scalar("Params/Epsilon", args.eps, global_step)
             writer.add_scalar(
                 "Params/Learning_Rate", qnet.learning_rate, global_step
             )
+            writer.add_scalar("Params/Beta", args.buffer_beta, global_step)
 
             losses.append(loss.numpy())
 
