@@ -108,6 +108,7 @@ def evaluate_model(
                 border=args.border,
                 food_amount=args.food_amount,
                 render_mode="rgb_array",
+                manhatten_fac = args.manhatten_fac,
                 seed=i + args.seed,
             )
             for i in range(args.n_envs)
@@ -201,6 +202,7 @@ def main(args: BasicArgs):
                 border=args.border,
                 food_amount=args.food_amount,
                 render_mode="rgb_array",
+                manhatten_fac = 0,
                 seed=i + args.seed,
             )
             for i in range(args.n_envs)

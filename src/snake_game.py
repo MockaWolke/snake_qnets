@@ -3,6 +3,12 @@ import gymnasium as gym
 from gymnasium import spaces
 import matplotlib.pyplot as plt
 
+int_to_dir = {0:"up", 1:'right', 2:'down',3:'left'}
+dir_to_int = dict(zip(int_to_dir.values(), int_to_dir.keys()))
+
+
+def manhatten(a,b):
+    return abs(a[0]-b[0]) + abs(a[1]-b[1])
 
 class SnakeGame(gym.Env):
     "Implements the snake game core"
@@ -17,6 +23,7 @@ class SnakeGame(gym.Env):
         grass_growth=0,
         max_grass=0,
         render_mode=None,
+        manhatten_fac = 0,
         seed = None
     ):
         "Initialize board"
@@ -30,6 +37,7 @@ class SnakeGame(gym.Env):
         self.grass_growth = grass_growth
         self.grass = np.zeros((height, width)) + max_grass
         self.max_grass = max_grass
+        self.manhatten_fac = manhatten_fac
 
         self.observation_space = spaces.Box(
             low=0,
@@ -106,6 +114,9 @@ class SnakeGame(gym.Env):
         move snake/game one step
         action can be -1 (turn left), 0 (continue), 1 (turn rignt)
         """
+        
+        old_distance = min(manhatten(self.snake[0], apple) for apple in self.apples)
+        
         direction = int(action)
         assert -1 <= direction <= 1
         self.direction += direction
@@ -113,7 +124,11 @@ class SnakeGame(gym.Env):
             self.direction = 3
         elif self.direction > 3:
             self.direction = 0
-        self.grow_snake(self.direction)  # two steps: grow+remove last
+        self.grow_snake(self.direction)  
+        
+        new_distance = min(manhatten(self.snake[0], apple) for apple in self.apples)
+        
+        
         if self.snake[0] in self.apples:
             self.apples.remove(self.snake[0])
             reward = 1
@@ -124,7 +139,7 @@ class SnakeGame(gym.Env):
             if self.done:
                 reward = -1
             else:
-                reward = 0
+                reward = (old_distance - new_distance) * self.manhatten_fac
         if reward >= 0:
             x, y = self.snake[0]
             reward += self.grass[x, y]
@@ -223,8 +238,7 @@ def make_env(**kwars):
     return _init
 
 
-int_to_dir = {0:"up", 1:'right', 2:'down',3:'left'}
-dir_to_int = dict(zip(int_to_dir.values(), int_to_dir.keys()))
+
 
 
 

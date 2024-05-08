@@ -39,6 +39,7 @@ class BasicArgs(BaseModel):
     update_mode : UpdateModes = UpdateModes.epoch_copy
     update_freq : int = 1
     theta : float = 0.005
+    manhatten_fac : float = 0.05
     
     
     def __init__(self, *args, **kwargs):
@@ -56,7 +57,7 @@ class BasicArgs(BaseModel):
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             print("setting device to", self.device)
             
-        self.run_name = self.run_name + "_" + datetime.now().strftime('%d-%m-H:%M:%S') 
+        self.run_name = self.run_name + "_" + datetime.now().strftime('%d-%m-%H:%M:%S') 
         
         if self.min_lr is not None:
             print(f"Annealing learning rate to {self.min_lr}")
