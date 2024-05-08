@@ -1,7 +1,7 @@
 gymnasium==0.29.1
-matplotlib==3.7.2
-numpy==1.25.2
-pydantic==2.7.1
+matplotlib
+numpy
+pydantic
 torch
-tqdm==4.66.1
-wandb==0.16.6
+tqdm
+wandb
