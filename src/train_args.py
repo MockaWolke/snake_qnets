@@ -10,15 +10,38 @@ class UpdateModes(str, Enum):
     polyak = 'polyak'
 
 class BasicArgs(BaseModel):
-    n_envs : int = 7
-    run_name : str = "unnamed"
-    batch_size : int = 32
+    
+    #misc
+    device: Optional[str] = None
+    test : bool = False
+    
+    # envs
+    n_envs : int = 8
     width_and_height : int = 14
     food_amount : int = 1
     border : int = 1
     seed : int = 0
-    buffer_size : int = 10_000
-    device: Optional[str] = None
+    manhatten_fac : float = 0.05
+    max_eval_steps : int = 10000
+    eval_envs : int = 16
+    
+    #wandb
+    run_name : str = "unnamed"
+    wandb_mode : str = "offline"
+    use_wandb : bool = True
+    run_group : Optional[str] = None
+    make_vid : bool = True
+    
+    #model
+    backbone : str = "normal"
+    update_mode : UpdateModes = UpdateModes.epoch_copy
+    
+    
+    #hpams
+    buffer_size : int = 100_000
+    batch_size : int = 32
+    update_freq : int = 1
+    
     eps : float = 0.05
     gamma : float = 0.98
     lr : float = 1e-3
@@ -26,22 +49,11 @@ class BasicArgs(BaseModel):
     steps_per_epoch : int = 50
     init_step : int = 0
     n_epoch_refill : int = 10
-    test : bool = False
     eval_freq : int = 2
-    save_freq : int = 2
     min_eps : float = 0.1
     eps_anneal_steps : int = 50000
     min_lr : Optional[float] = None
-    max_eval_steps : int = 10000
-    wandb_mode : str = "offline"
-    use_wandb : bool = True
-    run_group : Optional[str] = None
-    update_mode : UpdateModes = UpdateModes.epoch_copy
-    update_freq : int = 1
     theta : float = 0.005
-    manhatten_fac : float = 0.05
-    make_vid : bool = True
-    backbone : str = "normal"
     buffer_alpha : float = 0.0
     buffer_beta : float = 0.0
     incr_buffbeta : float = 0.0
