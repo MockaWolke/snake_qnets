@@ -4,6 +4,7 @@ import random
 from tqdm import tqdm
 from train_args import BasicArgs
 from models import DoubleQNET
+from loguru import logger
 
 def sample_eps_greedy(greedy_action, epsilon):
 
@@ -29,6 +30,10 @@ class ReplayBuffer:
         self.replays = []
         self.scores = np.zeros((self.size,), dtype=np.float32)
         
+        self.priority_mode = self.args.buffer_alpha != 0.0
+        
+        logger.info(f"Using Prioritized Buffer - {self.priority_mode}")
+        
         
     def add(self, value, priority = 1.0):
         if len(self.replays) < self.size:
@@ -45,15 +50,25 @@ class ReplayBuffer:
             self.add(value)
             
     def sample(self, batchsize):
-
-        scaled_scores = self.scores / self.scores.sum()
+        
+        if not self.priority_mode:
+            
+            scaled_scores = None
+            
+        else:
+            
+            scaled_scores = self.scores / self.scores.sum()
 
         indices = np.random.choice(len(self.replays), size=batchsize, p= scaled_scores)
         
         sample = [self.replays[idx] for idx in indices]
         
-        weights = (self.size * scaled_scores[indices]) ** (-self.args.buffer_beta)
-        weights /= weights.max()
+        if not self.priority_mode:
+            weights = np.ones(batchsize)
+        else:
+        
+            weights = (self.size * scaled_scores[indices]) ** (-self.args.buffer_beta)
+            weights /= weights.max()
 
         new_obs, obs, reward, terminated, actions = map(np.array, zip(*sample))
 
