@@ -30,7 +30,7 @@ def evaluate_model(
                 width=args.width_and_height,
                 height=args.width_and_height,
                 border=args.border,
-                food_amount=args.food_amount,
+                food_amount=1,
                 render_mode="rgb_array",
                 manhatten_fac = 0,
                 mode = "eval",

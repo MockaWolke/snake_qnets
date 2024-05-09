@@ -30,7 +30,7 @@ class SnakeGame(gym.Env):
         "Initialize board"
         super(SnakeGame, self).__init__()
 
-        if mode != "train" and manhatten_fac!=0:
+        if mode != "train" and (manhatten_fac!=0 or food_amount!= 1):
             
             raise ValueError(f"not working with mode {mode}")
                 
