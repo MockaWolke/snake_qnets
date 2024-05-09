@@ -10,7 +10,7 @@ parser.add_argument("path", type=str, help="Path to the YAML configuration file.
 parser.add_argument("--job", type=int, default=None, help="Specify a job index to run a single job.")
 parser.add_argument("--p3", action="store_true")
 
-
+print("Hey (:")
 
 args = parser.parse_args()
 
