@@ -41,7 +41,7 @@ class ReplayBuffer:
         else:
             self.replays[self.pos] = value
             
-        self.scores[self.pos] = priority ** self.args.buffer_alpha
+        self.scores[self.pos] = max(priority ** self.args.buffer_alpha, 1e-4)
         self.pos = (self.pos +1) % self.size
 
     def fill(self, values):
@@ -76,7 +76,7 @@ class ReplayBuffer:
     
     
     def update(self, indices, errors):
-        self.scores[indices] = np.abs(errors) ** self.args.buffer_alpha
+        self.scores[indices] = np.maximum(np.abs(errors) ** self.args.buffer_alpha, 1e-4)
 
     def init_fill(self, envs, heuristic):
 

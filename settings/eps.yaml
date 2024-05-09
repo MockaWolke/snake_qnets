@@ -1,7 +1,6 @@
 common:
   device: cuda
   wandb_mode: online
-
   n_envs: 8
   eval_envs: 16
 

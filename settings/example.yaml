@@ -1,0 +1,32 @@
+common:
+  device: cuda
+  wandb_mode: online
+  n_envs: 8
+  eval_envs: 16
+
+  steps_per_epoch: 1000
+  buffer_size: 100000
+  batch_size: 32
+  eps_anneal_steps: 75000
+  gamma: 0.98
+  lr: 0.00025
+  epochs: 90
+  eval_freq: 3
+  seed: 0
+  run_group: epsilon
+  max_eval_steps: 500
+  manhatten_fac: 0.1
+  
+runs:
+  - run_name: "0.5 initial eps"
+    eps: 0.5
+    min_eps: 0.05
+  - run_name: "0.25 initial eps"
+    eps: 0.25
+    min_eps: 0.05
+  - run_name: "0.1 initial eps"
+    eps: 0.1
+    min_eps: 0.05
+  - run_name: "increasing eps"
+    eps: 0.1
+    min_eps: 0.2

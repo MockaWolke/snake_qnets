@@ -44,7 +44,7 @@ for index, run in enumerate(runs):
             s_val = '"' + s_val + '"'
         command.extend([f"--{key}", str(s_val)])
     
-    log_file = f"{run['run_name']}_{datetime.now().strftime('%d-%H:%M')}.log".replace(" ","_")
+    log_file = f"{run['run_name']}.log".replace(" ","_")
     command.extend([">", log_file, "2>&1"])
 
     commands.append(" ".join(command))
