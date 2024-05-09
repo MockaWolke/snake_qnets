@@ -36,13 +36,13 @@ def evaluate_model(
                 mode = "eval",
                 seed=i + args.seed,
             )
-            for i in range(args.n_envs)
+            for i in range(args.eval_envs)
         ]
     )
 
-    terminated = np.zeros(args.n_envs)
-    rewards = np.zeros(args.n_envs)
-    steps = np.zeros(args.n_envs)
+    terminated = np.zeros(args.eval_envs)
+    rewards = np.zeros(args.eval_envs)
+    steps = np.zeros(args.eval_envs)
 
     obs, _ = envs.reset()
 
@@ -189,8 +189,7 @@ def train(args : BasicArgs, log_path, ckpt_path):
 
             best_score = max(new_score, best_score)
 
-        # final evaluation with more envs
-    args.n_envs *= 3
+    #final eval
     evaluate_model(qnet, args, writer, args.epochs, max_steps=args.max_eval_steps)
     return qnet
 
