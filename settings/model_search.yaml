@@ -23,14 +23,14 @@ common:
 runs:
   - run_name: "normal"
     backbone: "normal"
-    buffer_alpha : float = 0.0
-    buffer_beta : float = 0.0
-    incr_buffbeta : float = 0.0
+    buffer_alpha: 0.0
+    buffer_beta: 0.0
+    incr_buffbeta: 0.0
   - run_name: "dueling"
     backbone: "dueling"
-    buffer_alpha : float = 0.0
-    buffer_beta : float = 0.0
-    incr_buffbeta : float = 0.0
+    buffer_alpha: 0.0
+    buffer_beta: 0.0
+    incr_buffbeta: 0.0
   - run_name: "normal_prioritized_light"
     backbone: "normal"
     buffer_alpha: 0.4
