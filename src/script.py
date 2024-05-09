@@ -75,6 +75,7 @@ def evaluate_model(
     writer.add_scalar("Eval/min_reward", min_reward, epoch)
     writer.add_scalar("Eval/max_reward", max_reward, epoch)
     writer.add_scalar("Eval/mean_reward", mean_reward, epoch)
+    writer.add_scalar("Eval/mean_std", std_mean, epoch)
     writer.add_scalar("Eval/min_step", min_step, epoch)
     writer.add_scalar("Eval/max_step", max_step, epoch)
     writer.add_scalar("Eval/mean_step", mean_step, epoch)
