@@ -8,7 +8,7 @@ from loguru import logger
 
 def sample_eps_greedy(greedy_action, epsilon):
 
-    mask = np.random.uniform(0, 1, greedy_action.shape) < epsilon
+    mask = np.random.uniform(0, 1, greedy_action.shape) > epsilon
 
     random_actions = np.random.randint(-1, 2, greedy_action.shape)
 
