@@ -80,8 +80,11 @@ def plot_examples(common_settings : dict, runs):
             
         # lr
         
+        lr_anneal_steps = min(sett.lr_anneal_steps or steps, steps)
+        
+        
         min_lr = se.get("min_lr", sett.lr)
-        ax[1].plot([0, steps], [sett.lr, min_lr], label = se["run_name"])
+        ax[1].plot([0,lr_anneal_steps, steps], [sett.lr,min_lr, min_lr], label = se["run_name"])
         
         beta = np.minimum(sett.buffer_beta + sett.incr_buffbeta * np.arange(steps), 1)
         ax[2].plot(beta, label = se["run_name"])

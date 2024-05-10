@@ -128,6 +128,8 @@ def train(args : BasicArgs, log_path, ckpt_path):
     initial_lr = args.lr
     best_score = -np.inf
 
+    lr_anneal_steps = min(args.lr_anneal_steps or total_steps, total_steps)
+
     logger.success(f"Training for {total_steps} steps")
 
 
@@ -154,7 +156,7 @@ def train(args : BasicArgs, log_path, ckpt_path):
                 args.lr = max(
                     args.min_lr,
                     initial_lr
-                    - (initial_lr - args.min_lr) * (global_step / total_steps),
+                    - (initial_lr - args.min_lr) * (global_step / lr_anneal_steps),
                 )
                 qnet.learning_rate = args.lr
                 
@@ -202,10 +204,6 @@ def train(args : BasicArgs, log_path, ckpt_path):
 
 def main(args: BasicArgs):
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
     log_path = os.path.join("logs", args.run_name)
     ckpt_path = os.path.join("ckpt", args.run_name)
     os.makedirs(log_path, exist_ok=True)
@@ -247,5 +245,10 @@ def main(args: BasicArgs):
 if __name__ == "__main__":
 
     args = parse_args(BasicArgs)
+    
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.use_deterministic_algorithms(True)
 
     main(args)

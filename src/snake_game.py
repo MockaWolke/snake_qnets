@@ -145,7 +145,7 @@ class SnakeGame(gym.Env):
             if self.done:
                 reward = -1
             else:
-                reward = (old_distance - new_distance) * self.manhatten_fac
+                reward = (old_distance - new_distance) * self.manhatten_fac * min(5 / len(self.snake), 1.0)
         if reward >= 0:
             x, y = self.snake[0]
             reward += self.grass[x, y]
@@ -196,7 +196,7 @@ class SnakeGame(gym.Env):
         self.create_apples()
         self.grass[:, :] = self.max_grass
 
-        return self.board_state(), {"score": self.score}
+        return self.board_state(), {"score": self.scorex}
 
     def board_state(self, mode="human", close=False):
         "Render the environment"

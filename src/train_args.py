@@ -58,6 +58,7 @@ class BasicArgs(BaseModel):
     buffer_alpha : float = 0.0
     buffer_beta : float = 0.0
     incr_buffbeta : float = 0.0
+    lr_anneal_steps : Optional[int] = None
     
     def __init__(self, *args, **kwargs):
         
