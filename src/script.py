@@ -141,10 +141,14 @@ def train(args : BasicArgs, log_path, ckpt_path):
 
             loss = qnet.step(batch, buffer.update)
 
-            if global_step < args.eps_anneal_steps:
+            if global_step < args.eps_anneal_steps and args.eps_anneal_rate == 1.0:
                 args.eps = args.min_eps + (initial_eps - args.min_eps) * (
                     1 - global_step / args.eps_anneal_steps
                 )
+
+
+            else: # exponential decay
+                args.eps = max(args.min_eps, args.eps * args.eps_anneal_rate)
 
             if args.min_lr is not None:
                 args.lr = max(

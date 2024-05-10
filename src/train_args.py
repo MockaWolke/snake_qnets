@@ -42,7 +42,10 @@ class BasicArgs(BaseModel):
     batch_size : int = 32
     update_freq : int = 1
     
-    eps : float = 0.05
+    eps : float = 0.1
+    min_eps : float = 0.05
+    eps_anneal_steps : int = 50000
+    eps_anneal_rate : float  = 1.0
     gamma : float = 0.98
     lr : float = 1e-3
     epochs : int = 50
@@ -50,8 +53,6 @@ class BasicArgs(BaseModel):
     init_step : int = 0
     n_epoch_refill : int = 10
     eval_freq : int = 2
-    min_eps : float = 0.1
-    eps_anneal_steps : int = 50000
     min_lr : Optional[float] = None
     theta : float = 0.005
     buffer_alpha : float = 0.0
@@ -77,6 +78,11 @@ class BasicArgs(BaseModel):
         
         if self.min_lr is not None:
             print(f"Annealing learning rate to {self.min_lr}")
+            
+        if self.eps_anneal_rate == 1.0:
+            print("linear eps anneal")
+        else:
+            print("exponential eps decay")
         
             
             
