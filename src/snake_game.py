@@ -196,7 +196,7 @@ class SnakeGame(gym.Env):
         self.create_apples()
         self.grass[:, :] = self.max_grass
 
-        return self.board_state(), {"score": self.scorex}
+        return self.board_state(), {"score": self.score}
 
     def board_state(self, mode="human", close=False):
         "Render the environment"
