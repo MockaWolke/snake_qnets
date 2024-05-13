@@ -80,45 +80,78 @@ class ReplayBuffer:
 
     def init_fill(self, envs, heuristic):
 
-        old_obs = envs.reset()[0]
+        # init env
+        self.last_ops = envs.reset()[0]
 
-        for _ in tqdm(
-            range(int(np.ceil(self.size / self.args.n_envs))),
-            desc="inital buffer fill",
-        ):
-
+        def func(env, obs):
             states = envs.get_attr("state")
             actions = np.array([heuristic(i) for i in states])
-            actions = sample_eps_greedy(actions, self.args.eps)
+            return actions
+        
+        
+        self._sample_env(int(np.ceil(self.size / self.args.n_envs)), envs, func, "Initial Fill")
+        
+        assert len(self.replays) == self.size, "buffer not full"
+        
+        
+    def _sample_env(self, steps: int, envs, sample_func, desc = None):
+        
+        old_obs = self.last_ops
+
+        samples = []
+
+        for _ in tqdm(
+            range(steps + self.args.n_obs_reward - 1), desc=desc
+        ):
+
+            action = sample_func(envs, old_obs)
+
+            actions = sample_eps_greedy(action, self.args.eps)
 
             new_obs, reward, terminated, _, scores = envs.step(actions)
 
-            packed = list(zip(new_obs, old_obs, reward, terminated, actions))
-
-            self.fill(packed)
+            samples.append((new_obs, old_obs, reward, terminated, actions))
 
             old_obs = new_obs
-
+            
+        # important set last ops 
         self.last_ops = new_obs
+            
         
-        assert len(self.replays) == self.size, "buffer not full"
+        for idx in range(len(samples) - self.args.n_obs_reward + 1): # cancels out with 1
+            
+            
+            old_obs = samples[idx][1]
+            
+            # s_ for stacked
+            s_new_obs, s_reward, s_terminated, s_actions = [], [], [], []
+            
+            for i in range(self.args.n_obs_reward):
+                
+                new_obs, _, reward, terminated, actions = samples[idx + i] # get respective future points
+                
+                s_new_obs.append(new_obs)
+                s_reward.append(reward)
+                s_terminated.append(terminated)
+                s_actions.append(actions)
+            
+            
+            s_new_obs, s_reward, s_terminated, s_actions = map(lambda x: np.stack(x, axis=1),(s_new_obs, s_reward, s_terminated, s_actions))
+            
+            assert s_new_obs.shape[:2] == (self.args.n_envs, self.args.n_obs_reward)
+            
+            # unpack over enironments
+            packed = list(zip(s_new_obs, old_obs, s_reward, s_terminated, s_actions))
+            self.fill(packed)
+        
 
     def fill_epoch(self, envs, model: DoubleQNET):
 
         n_items = int(self.size / self.args.n_epoch_refill)
 
-        old_obs = self.last_ops
-
-        for _ in tqdm(
-            range(int(np.ceil(n_items / self.args.n_envs))), desc="Sampling new Rounds"
-        ):
-
-            actions = model.get_greedy_action(old_obs)
-            actions = sample_eps_greedy(actions, self.args.eps)
-
-            new_obs, reward, terminated, _, scores = envs.step(actions)
-
-            packed = list(zip(new_obs, old_obs, reward, terminated, actions))
-            self.fill(packed)
-
-            old_obs = new_obs
+        steps = int(np.ceil(n_items / self.args.n_envs))
+        
+        def func(env, obs):
+            return model.get_greedy_action(obs)
+        
+        self._sample_env(steps, envs, func, desc = "Samling new Rounds")

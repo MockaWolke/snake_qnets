@@ -61,6 +61,7 @@ class BasicArgs(BaseModel):
     lr_anneal_steps : Optional[int] = None
     batchnorm : bool = False
     scale_fac : float = True
+    n_obs_reward : int = 1
     
     def __init__(self, *args, **kwargs):
         

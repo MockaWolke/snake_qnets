@@ -11,12 +11,12 @@ def prepare_batch(batch, device):
     new_obs, obs, reward, terminated, actions, indices, weights = batch
 
     new_obs = torch.tensor(new_obs, dtype=torch.float32, device=device).permute(
-        0, 3, 1, 2
+        1, 0, 4, 2, 3
     )
     obs = torch.tensor(obs, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
-    reward = torch.tensor(reward, dtype=torch.float32, device=device)
-    terminated = torch.tensor(terminated, dtype=torch.bool, device=device)
-    actions = torch.tensor(actions, dtype=torch.long, device=device) + 1
+    reward = torch.tensor(reward, dtype=torch.float32, device=device).permute(1, 0)
+    terminated = torch.tensor(terminated, dtype=torch.bool, device=device).permute(1, 0)
+    actions = torch.tensor(actions, dtype=torch.long, device=device).permute(1, 0) + 1
     weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
     return new_obs, obs, reward, terminated, actions, indices, weights
@@ -143,22 +143,49 @@ class DoubleQNET(nn.Module):
                     (1 - self.args.theta) * target_param.data
                     + self.args.theta * local_param.data
                 )
+                
+    def _compute_label(self, new_obs, reward, terminated):
+        
+        print("shape", new_obs.shape)
+        
+        assert new_obs.shape[:2] == (self.args.n_obs_reward, self.args.batch_size)
+        assert reward.shape == (self.args.n_obs_reward, self.args.batch_size)
+        assert terminated.shape == (self.args.n_obs_reward, self.args.batch_size)
+        
+        label = reward[0]
+        
+        valid = torch.ones(label.shape[0], dtype = torch.bool, device= terminated.device)
+        
+        for idx in range(self.args.n_obs_reward):
+            
+            
+            valid = torch.logical_and(valid, torch.logical_not(terminated[idx]))
+            
+            if (valid == False).all(): # break to be quicker
+                break
+            
+        
+            with torch.no_grad():
+                cur_val = torch.max(self.target_model(new_obs[idx]), -1).values
+            
+            if idx +1 != self.args.n_obs_reward: 
+                cur_val += reward[idx + 1] # add next reward
+                
+            # add values
+            label += cur_val * (self.args.gamma ** (idx + 1))
+        
+        return label
 
     def step(self, batch, update_func):
 
         new_obs, obs, reward, terminated, actions, indices, weights = prepare_batch(
             batch, self.args.device
         )
+        
 
-        pred_vals = torch.gather(self.model(obs), 1, actions[:, None]).squeeze()
+        pred_vals = torch.gather(self.model(obs), 1, actions[0, None]).squeeze()
 
-        with torch.no_grad():
-            next_vals = torch.max(self.target_model(new_obs), -1).values
-
-        # if terminated ignore next values
-        next_vals *= 1 - terminated.to(next_vals.dtype)
-
-        y_true = reward + self.args.gamma * next_vals
+        y_true = self._compute_label(new_obs, reward, terminated)
 
         loss = (self.criterion(y_true, pred_vals) * weights).mean()
 
