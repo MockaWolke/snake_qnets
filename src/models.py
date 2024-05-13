@@ -30,7 +30,7 @@ class Backbone(nn.Module):
         
         self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
         self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv2 = nn.Conv2d(int(32 * scale_fac), 64, 3, padding=1)
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64*scale_fac), 3, padding=1)
         self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
         self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
         self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
@@ -53,7 +53,7 @@ class DuelingBackbone(nn.Module):
         
         self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
         self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv2 = nn.Conv2d(int(32 * scale_fac), 64, 3, padding=1)
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64*scale_fac), 3, padding=1)
         self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
         self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
         self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
