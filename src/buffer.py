@@ -121,7 +121,6 @@ class ReplayBuffer:
         for idx in range(len(samples) - self.args.n_obs_reward + 1): # cancels out with 1
             
             
-            old_obs = samples[idx][1]
             _, old_obs, _, _, actions = samples[idx] 
             
             
@@ -130,7 +129,7 @@ class ReplayBuffer:
             
             for i in range(self.args.n_obs_reward):
                 
-                new_obs, _, reward, terminated, actions = samples[idx + i] # get respective future points
+                new_obs, _, reward, terminated, _ = samples[idx + i] # get respective future points
                 
                 s_reward.append(reward)
                 s_terminated.append(terminated)

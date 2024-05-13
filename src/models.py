@@ -165,7 +165,7 @@ class DoubleQNET(nn.Module):
 
         for idx in range(self.args.n_obs_reward):
 
-            label += (reward[idx] * (self.args.gamma ** idx)) * valid
+            label += (reward[idx] * (self.args.gamma ** idx)) * valid.to(torch.float32)
             valid = torch.logical_and(valid, torch.logical_not(terminated[idx]))
 
         
@@ -173,7 +173,7 @@ class DoubleQNET(nn.Module):
         with torch.no_grad():
             last_state = torch.max(self.target_model(new_obs), -1).values
         
-        label += valid * (last_state * self.args.gamma ** self.args.n_obs_reward)
+        label += valid.to(torch.float32) * (last_state * (self.args.gamma ** self.args.n_obs_reward))
         
 
 
