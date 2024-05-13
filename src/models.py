@@ -11,32 +11,37 @@ def prepare_batch(batch, device):
     new_obs, obs, reward, terminated, actions, indices, weights = batch
 
     new_obs = torch.tensor(new_obs, dtype=torch.float32, device=device).permute(
-        1, 0, 4, 2, 3
+        0, 3, 2, 1
     )
     obs = torch.tensor(obs, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
     reward = torch.tensor(reward, dtype=torch.float32, device=device).permute(1, 0)
     terminated = torch.tensor(terminated, dtype=torch.bool, device=device).permute(1, 0)
-    actions = torch.tensor(actions, dtype=torch.long, device=device).permute(1, 0) + 1
+    actions = torch.tensor(actions, dtype=torch.long, device=device) + 1
     weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
     return new_obs, obs, reward, terminated, actions, indices, weights
 
 
 class Backbone(nn.Module):
-    def __init__(self, input_channels, n_actions, imgsz=16, batchnorm = False, scale_fac : float = 1.0):
+    def __init__(
+        self,
+        input_channels,
+        n_actions,
+        imgsz=16,
+        batchnorm=False,
+        scale_fac: float = 1.0,
+    ):
         super(Backbone, self).__init__()
-        
-        
-        
+
         self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
         self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64*scale_fac), 3, padding=1)
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64 * scale_fac), 3, padding=1)
         self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
+        self.conv3 = nn.Conv2d(int(64 * scale_fac), int(64 * scale_fac), 3, padding=1)
         self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
-        self.fc1 = nn.Linear(int(64*scale_fac) * imgsz**2, int(512 * scale_fac))
+        self.fc1 = nn.Linear(int(64 * scale_fac) * imgsz**2, int(512 * scale_fac))
         self.fc2 = nn.Linear(int(512 * scale_fac), n_actions)
-        
+
     def forward(self, x):
         x = F.relu(self.b1(self.conv1(x)))
         x = F.relu(self.b2(self.conv2(x)))
@@ -45,46 +50,47 @@ class Backbone(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
+
 class DuelingBackbone(nn.Module):
-    def __init__(self, input_channels, n_actions, imgsz=16, batchnorm = False, scale_fac : float = 1.0):
+    def __init__(
+        self,
+        input_channels,
+        n_actions,
+        imgsz=16,
+        batchnorm=False,
+        scale_fac: float = 1.0,
+    ):
         super(DuelingBackbone, self).__init__()
-        
-        
-        
+
         self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
         self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64*scale_fac), 3, padding=1)
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), int(64 * scale_fac), 3, padding=1)
         self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
-        self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
+        self.conv3 = nn.Conv2d(int(64 * scale_fac), int(64 * scale_fac), 3, padding=1)
         self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
-        
-        
+
         self.value_head = nn.Sequential(
-            nn.Linear(int(64*scale_fac)  * imgsz**2, int(512 * scale_fac)),
+            nn.Linear(int(64 * scale_fac) * imgsz**2, int(512 * scale_fac)),
             nn.ReLU(),
             nn.Linear(int(512 * scale_fac), 1),
-            
         )
         self.adv_head = nn.Sequential(
-            nn.Linear(int(64*scale_fac)  * imgsz**2, int(512 * scale_fac)),
+            nn.Linear(int(64 * scale_fac) * imgsz**2, int(512 * scale_fac)),
             nn.ReLU(),
             nn.Linear(int(512 * scale_fac), n_actions),
         )
 
-        
-        
     def forward(self, x):
         x = F.relu(self.b1(self.conv1(x)))
         x = F.relu(self.b2(self.conv2(x)))
         x = F.relu(self.b3(self.conv3(x)))
         x = x.reshape(x.size(0), -1)
-        
+
         value = self.value_head(x)
         adv = self.adv_head(x)
         adv = adv - adv.mean(axis=1, keepdim=True)
 
         return value + adv
-
 
 
 class DoubleQNET(nn.Module):
@@ -96,13 +102,17 @@ class DoubleQNET(nn.Module):
         self.args = args
 
         self.imgsz = args.width_and_height + args.border * 2
-        
+
         if args.backbone == "normal":
-            
-            self.model = Backbone(3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm).to(args.device)
+
+            self.model = Backbone(
+                3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm
+            ).to(args.device)
         elif args.backbone == "dueling":
-            self.model = DuelingBackbone(3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm).to(args.device)
-            
+            self.model = DuelingBackbone(
+                3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm
+            ).to(args.device)
+
         else:
             raise ValueError("wrong backbone")
 
@@ -143,36 +153,30 @@ class DoubleQNET(nn.Module):
                     (1 - self.args.theta) * target_param.data
                     + self.args.theta * local_param.data
                 )
-                
+
     def _compute_label(self, new_obs, reward, terminated):
-        
-        
-        assert new_obs.shape[:2] == (self.args.n_obs_reward, self.args.batch_size)
+
         assert reward.shape == (self.args.n_obs_reward, self.args.batch_size)
         assert terminated.shape == (self.args.n_obs_reward, self.args.batch_size)
-        
-        label = reward[0]
-        
-        valid = torch.ones(label.shape[0], dtype = torch.bool, device= terminated.device)
-        
+
+        label = torch.zeros_like(reward[0])
+
+        valid = torch.ones(label.shape[0], dtype=torch.bool, device=terminated.device)
+
         for idx in range(self.args.n_obs_reward):
-            
-            
+
+            label += (reward[idx] * (self.args.gamma ** idx)) * valid
             valid = torch.logical_and(valid, torch.logical_not(terminated[idx]))
-            
-            if (valid == False).all(): # break to be quicker
-                break
-            
+
         
-            with torch.no_grad():
-                cur_val = torch.max(self.target_model(new_obs[idx]), -1).values
-            
-            if idx +1 != self.args.n_obs_reward: 
-                cur_val += reward[idx + 1] # add next reward
-                
-            # add values
-            label += cur_val * (self.args.gamma ** (idx + 1))
+
+        with torch.no_grad():
+            last_state = torch.max(self.target_model(new_obs), -1).values
         
+        label += valid * (last_state * self.args.gamma ** self.args.n_obs_reward)
+        
+
+
         return label
 
     def step(self, batch, update_func):
@@ -180,9 +184,8 @@ class DoubleQNET(nn.Module):
         new_obs, obs, reward, terminated, actions, indices, weights = prepare_batch(
             batch, self.args.device
         )
-        
 
-        pred_vals = torch.gather(self.model(obs), 1, actions[0, None]).squeeze()
+        pred_vals = torch.gather(self.model(obs), 1, actions[:, None]).squeeze()
 
         y_true = self._compute_label(new_obs, reward, terminated)
 

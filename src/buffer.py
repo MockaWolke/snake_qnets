@@ -122,26 +122,26 @@ class ReplayBuffer:
             
             
             old_obs = samples[idx][1]
+            _, old_obs, _, _, actions = samples[idx] 
             
-            # s_ for stacked
-            s_new_obs, s_reward, s_terminated, s_actions = [], [], [], []
+            
+            s_reward, s_terminated = [], []
+            
             
             for i in range(self.args.n_obs_reward):
                 
                 new_obs, _, reward, terminated, actions = samples[idx + i] # get respective future points
                 
-                s_new_obs.append(new_obs)
                 s_reward.append(reward)
                 s_terminated.append(terminated)
-                s_actions.append(actions)
+
             
+            s_reward, s_terminated = map(lambda x: np.stack(x, axis=1),(s_reward, s_terminated))
             
-            s_new_obs, s_reward, s_terminated, s_actions = map(lambda x: np.stack(x, axis=1),(s_new_obs, s_reward, s_terminated, s_actions))
-            
-            assert s_new_obs.shape[:2] == (self.args.n_envs, self.args.n_obs_reward)
+            assert s_reward.shape == (self.args.n_envs, self.args.n_obs_reward)
             
             # unpack over enironments
-            packed = list(zip(s_new_obs, old_obs, s_reward, s_terminated, s_actions))
+            packed = list(zip(new_obs, old_obs, s_reward, s_terminated, actions))
             self.fill(packed)
         
 
