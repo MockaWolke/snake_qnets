@@ -146,7 +146,6 @@ class DoubleQNET(nn.Module):
                 
     def _compute_label(self, new_obs, reward, terminated):
         
-        print("shape", new_obs.shape)
         
         assert new_obs.shape[:2] == (self.args.n_obs_reward, self.args.batch_size)
         assert reward.shape == (self.args.n_obs_reward, self.args.batch_size)
