@@ -22,52 +22,69 @@ def prepare_batch(batch, device):
     return new_obs, obs, reward, terminated, actions, indices, weights
 
 
-class SmallCNNBackbone(nn.Module):
-    def __init__(self, input_channels, n_actions, imgsz=16):
-        super(SmallCNNBackbone, self).__init__()
-        self.conv1 = nn.Conv2d(input_channels, 32, 3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.conv3 = nn.Conv2d(64, 64, 3, padding=1)
-        self.fc1 = nn.Linear(64 * imgsz**2, 512)
-        self.fc2 = nn.Linear(512, n_actions)
-
+class Backbone(nn.Module):
+    def __init__(self, input_channels, n_actions, imgsz=16, batchnorm = False, scale_fac : float = 1.0):
+        super(Backbone, self).__init__()
+        
+        
+        
+        self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
+        self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), 64, 3, padding=1)
+        self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
+        self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
+        self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
+        self.fc1 = nn.Linear(int(64*scale_fac) * imgsz**2, int(512 * scale_fac))
+        self.fc2 = nn.Linear(int(512 * scale_fac), n_actions)
+        
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.relu(self.b1(self.conv1(x)))
+        x = F.relu(self.b2(self.conv2(x)))
+        x = F.relu(self.b3(self.conv3(x)))
         x = x.reshape(x.size(0), -1)
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
-
-class DuelingCNNBackbone(nn.Module):
-    def __init__(self, input_channels, n_actions, imgsz=16):
-        super(DuelingCNNBackbone, self).__init__()
+class DuelingBackbone(nn.Module):
+    def __init__(self, input_channels, n_actions, imgsz=16, batchnorm = False, scale_fac : float = 1.0):
+        super(DuelingBackbone, self).__init__()
         
-        self.conv1 = nn.Conv2d(input_channels, 32, 3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.conv3 = nn.Conv2d(64, 64, 3, padding=1)
-
+        
+        
+        self.conv1 = nn.Conv2d(input_channels, int(32 * scale_fac), 3, padding=1)
+        self.b1 = nn.BatchNorm2d(int(32 * scale_fac)) if batchnorm else nn.Identity()
+        self.conv2 = nn.Conv2d(int(32 * scale_fac), 64, 3, padding=1)
+        self.b2 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
+        self.conv3 = nn.Conv2d(int(64*scale_fac), int(64*scale_fac), 3, padding=1)
+        self.b3 = nn.BatchNorm2d(int(64 * scale_fac)) if batchnorm else nn.Identity()
+        
+        
         self.value_head = nn.Sequential(
-            nn.Linear(64 * imgsz**2, 512),
-            nn.Linear(512, 1),
+            nn.Linear(int(64*scale_fac)  * imgsz**2, int(512 * scale_fac)),
+            nn.ReLU(),
+            nn.Linear(int(512 * scale_fac), 1),
+            
         )
         self.adv_head = nn.Sequential(
-            nn.Linear(64 * imgsz**2, 512),
-            nn.Linear(512, n_actions),
+            nn.Linear(int(64*scale_fac)  * imgsz**2, int(512 * scale_fac)),
+            nn.ReLU(),
+            nn.Linear(int(512 * scale_fac), n_actions),
         )
 
+        
+        
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.relu(self.b1(self.conv1(x)))
+        x = F.relu(self.b2(self.conv2(x)))
+        x = F.relu(self.b3(self.conv3(x)))
         x = x.reshape(x.size(0), -1)
-
+        
         value = self.value_head(x)
         adv = self.adv_head(x)
         adv = adv - adv.mean(axis=1, keepdim=True)
 
         return value + adv
+
 
 
 class DoubleQNET(nn.Module):
@@ -82,9 +99,9 @@ class DoubleQNET(nn.Module):
         
         if args.backbone == "normal":
             
-            self.model = SmallCNNBackbone(3, 3, self.imgsz).to(args.device)
+            self.model = Backbone(3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm).to(args.device)
         elif args.backbone == "dueling":
-            self.model = DuelingCNNBackbone(3, 3, self.imgsz).to(args.device)
+            self.model = DuelingBackbone(3, 3, self.imgsz, scale_fac=args.scale_fac, batchnorm=args.batchnorm).to(args.device)
             
         else:
             raise ValueError("wrong backbone")

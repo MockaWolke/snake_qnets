@@ -59,6 +59,8 @@ class BasicArgs(BaseModel):
     buffer_beta : float = 0.0
     incr_buffbeta : float = 0.0
     lr_anneal_steps : Optional[int] = None
+    batchnorm : bool = False
+    scale_fac : float = True
     
     def __init__(self, *args, **kwargs):
         
