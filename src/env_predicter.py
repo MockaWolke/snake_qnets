@@ -40,6 +40,7 @@ class NewArgs(BaseModel):
     epochs: int = 32
     n_workers: int = 8
     run_name: str
+    wandb_mode: str = "online"
 
 
 def gen_data(size, eps, agent, envs, agent_args, args):
@@ -156,6 +157,24 @@ class EnvDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
+        super(ConvBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.use_skip = in_channels == out_channels
+
+    def forward(self, x):
+        identity = x
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x))) 
+        if self.use_skip:
+            x = x + identity
+        return x
+
+
 
 class EnvApp(Module):
 
@@ -165,42 +184,36 @@ class EnvApp(Module):
 
         w = args.m_width
 
-        self.conv1 = nn.Conv2d((args.n_steps_fut + 1) * 3, w, 3, padding=1)
+        self.block1 = ConvBlock((args.n_steps_fut + 1) * 3, w)
+        self.block2 = ConvBlock(w , w * 2)
 
-        self.conv2 = nn.Conv2d(w, w, 3, padding=1)
-
-        self.conv3 = nn.Conv2d(w, w, 3, padding=1)
-        self.conv4 = nn.Conv2d(w, w, 3, padding=1)
-
-        self.norm1 = nn.BatchNorm2d(w)
-        self.norm2 = nn.BatchNorm2d(w)
-        self.norm3 = nn.BatchNorm2d(w)
-        self.norm4 = nn.BatchNorm2d(w)
 
         self.pool = nn.MaxPool2d(2)
-        self.smaller_conv1 = nn.Conv2d(w, w * 2, 3, padding=1)
-        self.smaller_conv2 = nn.Conv2d(w * 2, w * 2, 3, padding=1)
-        self.s_norm1 = nn.BatchNorm2d(w * 2)
-        self.s_norm2 = nn.BatchNorm2d(w * 2)
-
+        self.smaller_block1 = ConvBlock(w * 2, w* 4)
+        self.smaller_block2 = ConvBlock(w * 4, w * 2)
+        
         self.inv = nn.ConvTranspose2d(
-            w * 2, w, 3, padding=1, output_padding=1, stride=2
+            w * 2, w * 2, 3, padding=1, output_padding=1, stride=2
         )
-
-        self.out_layer = nn.Conv2d(w, 4, 1, padding=0)
+        
+        self.block3 = ConvBlock(w * 4, w * 2)
+        self.block4 = ConvBlock(w * 2, w * 2)
+        
+        self.out_layer = nn.Conv2d(w * 2, 4, 1, padding=0)
 
     def forward(self, x):
 
-        x = F.relu(self.norm1(self.conv1(x)))
-        x = x + F.relu(self.norm2(self.conv2(x)))
-        bigger = x + F.relu(self.norm3(self.conv3(x)))
-
-        smaller = F.relu(self.s_norm1(self.smaller_conv1(self.pool(bigger))))
-        smaller = smaller + F.relu(self.s_norm2(self.smaller_conv2(smaller)))
-
-        x = bigger + self.inv(smaller)
-
-        x = x + F.relu(self.norm4(self.conv4(x)))
+        x = self.block1(x)
+        x = self.block2(x)
+        
+        smaller = self.pool(x)
+        smaller = self.smaller_block1(smaller)
+        smaller = self.smaller_block2(smaller)
+        
+        x = torch.cat([x, self.inv(smaller)], dim = 1)
+        
+        x = self.block3(x) 
+        x = self.block4(x) 
 
         return self.out_layer(x)
 
@@ -234,10 +247,10 @@ class Wrapper(LightningModule):
 
         preds = torch.argmax(logits, dim=1)
         acc = self.accuracy_metric(preds, y)
-        self.log("train_accuracy", acc, prog_bar=True)
+        self.log("train_accuracy", acc, prog_bar=True, on_step=False, on_epoch=True)
 
         success_rate = self.success_rate_metric(self.succes_rate(preds, y))
-        self.log("train_success_rate", success_rate, prog_bar=True)
+        self.log("train_success_rate", success_rate, prog_bar=True, on_step=False, on_epoch=True)
 
         return loss
     
@@ -276,6 +289,7 @@ def main():
         min_eps=0.05,
         n_epoch_refil=1,
         n_obs_reward=args.n_steps_fut + 1,
+        device = args.device
     )
 
     random.seed(agent_args.seed)
@@ -329,6 +343,7 @@ def main():
 
     if args.test:
         args.run_name += "_test"
+        args.wandb_mode = "offline"
 
     ckpt_path = os.path.join("ckpt", args.run_name)
     os.makedirs(ckpt_path, exist_ok=True)
@@ -337,10 +352,9 @@ def main():
         WandbLogger(
             project="env_approximation",
             name=args.run_name,
-            offline=args.test,
             log_model=True,
             config = args.model_dump(),
-             
+            mode = args.wandb_mode   
         ),
         
     ]
