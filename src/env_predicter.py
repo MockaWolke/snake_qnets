@@ -214,9 +214,7 @@ class Wrapper(LightningModule):
         self.loss_fn = nn.CrossEntropyLoss()
         self.accuracy_metric = Accuracy(task="multiclass", num_classes=4)
         self.mean_loss_metric = MeanMetric()
-        self.success_rate_metric = Accuracy(
-            task="multiclass", num_classes=4, threshold=1.0
-        )
+        self.success_rate_metric = MeanMetric()
 
     def forward(self, x):
         return self.model(x)
@@ -238,10 +236,15 @@ class Wrapper(LightningModule):
         acc = self.accuracy_metric(preds, y)
         self.log("train_accuracy", acc, prog_bar=True)
 
-        success_rate = self.success_rate_metric(preds, y)
+        success_rate = self.success_rate_metric(self.succes_rate(preds, y))
         self.log("train_success_rate", success_rate, prog_bar=True)
 
         return loss
+    
+    def succes_rate(self, preds, y):
+        
+        val = (preds == y).view(preds.shape[0], -1).all(dim = 1).to(torch.float32)
+        return val
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
@@ -255,7 +258,7 @@ class Wrapper(LightningModule):
         acc = self.accuracy_metric(preds, y)
         self.log("val_accuracy", acc, prog_bar=True)
 
-        success_rate = self.success_rate_metric(preds, y)
+        success_rate = self.success_rate_metric(self.succes_rate(preds, y))
         self.log("val_success_rate", success_rate, prog_bar=True)
 
 
