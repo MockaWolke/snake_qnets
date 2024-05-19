@@ -149,7 +149,7 @@ class EnvDataset(Dataset):
         x, y = self.data[index]
         x = torch.tensor(x, dtype=torch.float32).permute((2, 0, 1))
 
-        y = np.argmax(y, -1).T
+        y = np.argmax(y, -1)
 
         y = torch.tensor(y, dtype=torch.long)
 
