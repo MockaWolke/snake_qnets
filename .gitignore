@@ -2,10 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+settings/*.yaml
 wandb
 ckpt
 wandb_key
+lightning_logs
 
 # C extensions
 *.so
