@@ -41,6 +41,7 @@ class NewArgs(BaseModel):
     n_workers: int = 8
     run_name: str
     wandb_mode: str = "online"
+    loss_weight : float = 10.0
 
 
 def gen_data(size, eps, agent, envs, agent_args, args):
@@ -148,7 +149,7 @@ class EnvDataset(Dataset):
         x, y = self.data[index]
         x = torch.tensor(x, dtype=torch.float32).permute((2, 0, 1))
 
-        y = np.argmax(y, -1)
+        y = np.argmax(y, -1).T
 
         y = torch.tensor(y, dtype=torch.long)
 
@@ -224,7 +225,7 @@ class Wrapper(LightningModule):
         super().__init__()
         self.args = args
         self.model = EnvApp(args)
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1, args.loss_weight, 1, args.loss_weight]))
         self.accuracy_metric = Accuracy(task="multiclass", num_classes=4)
         self.mean_loss_metric = MeanMetric()
         self.success_rate_metric = MeanMetric()
