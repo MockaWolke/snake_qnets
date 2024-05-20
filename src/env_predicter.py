@@ -27,7 +27,7 @@ import yaml
 import sys
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-
+from models import Backbone
 
 class NewArgs(BaseModel):
     data_points: int = 10
@@ -42,6 +42,7 @@ class NewArgs(BaseModel):
     run_name: str
     wandb_mode: str = "online"
     loss_weight : float = 10.0
+    val_steps : int = 1000
 
 
 def gen_data(size, eps, agent, envs, agent_args, args):
@@ -219,10 +220,194 @@ class EnvApp(Module):
 
         return self.out_layer(x)
 
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, num_stack=3):
+        super(FrameStack, self).__init__(env)
+        self.num_stack = num_stack
+        self.frames = []
+        self.observation_space = spaces.Box(
+            low=0, 
+            high=1, 
+            shape=(num_stack, env.height + env.border * 2, env.width + env.border * 2, 3), 
+            dtype=np.float32
+        )
+    
+    def reset(self):
+        obs,info = self.env.reset()
+        self.frames = [obs for _ in range(self.num_stack)]
+        return self._get_observation(), info
+    
+    def step(self, action):
+        
+        obs, reward, done, truncated, info = self.env.step(action)
+        self.frames.pop(0)
+        self.frames.append(obs)
+        return self._get_observation(), reward, done, truncated, info
+    
+    def _get_observation(self):
+        return np.stack(self.frames, axis=0)
+    
+class MarkovSampler(nn.Module):
+
+    def __init__(self, agent: Backbone, env_model: EnvApp, device: str, agent_args : BasicArgs) -> None:
+        super().__init__()
+
+        self.agent = agent.to(device=device)
+        self.env_model = env_model.to(device=device)
+        self.device = device
+
+        self.colors = torch.tensor(
+            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+            dtype=torch.float32,
+            device=device,
+        )
+        self.agent_args = agent_args
+
+    def greedy_agent_action(self, obs: torch.Tensor) -> np.ndarray:
+
+        # get last frame
+        obs = obs[:, -1]
+
+        obs = torch.tensor(obs, dtype=torch.float32, device=self.device).permute(
+            0, 3, 1, 2
+        )
+
+        with torch.no_grad():
+
+            return torch.argmax(self.agent(obs), -1).cpu().numpy() - 1
+
+    def pred_env(self, obs: torch.Tensor, actions: torch.Tensor, with_raw = False) -> torch.Tensor:
+
+        # obs of length 3
+
+        if obs.shape[1] != 3 and len(obs.shape) != 5:
+            raise ValueError("Expected as batch")
+
+        obs = torch.tensor(obs, device=self.device, dtype=torch.float32)
+        actions = torch.tensor(actions, device=self.device, dtype=torch.long)
+
+        # blacken border
+        obs[:, :, [0, -1]] = 0
+        obs[:, :, :, [0, -1]] = 0
+
+        action_mask = torch.zeros(
+            (obs.shape[0], 16, 16, 3), dtype=torch.float32, device=self.device
+        )
+        action_mask[:, :, :, actions + 1] = 1
+
+        x = torch.cat([obs[:, 0], obs[:, 1], obs[:, 2], action_mask], dim=-1)
+        x = x.permute(0, 3, 2, 1)
+
+        pred = torch.argmax(self.env_model(x), dim=1)
+        
+        img = self.colors[pred].transpose(1, 2)
+        img[:, [0, -1]] = 0.5
+        img[:, :, [0, -1]] = 0.5
+
+        bs = obs.shape[0]
+        flattened = pred.view(bs, -1)
+
+        rewards = torch.zeros(bs, dtype=torch.float32, device=self.device)
+        
+        # if no red than -> loss
+        mask = (flattened == 2).any(1)
+        
+        rewards = torch.where(mask, rewards, -1)
+        
+        # if not loss and no white -> win
+        mask = torch.logical_and(mask, ~(flattened == 3).any(1))
+        rewards = torch.where(mask, 1, rewards)
+        
+        if with_raw:
+            return img.cpu(), rewards.cpu(), pred
+            
+            
+        return img.cpu(), rewards.cpu()
+    
+    def env_model_performance(self, n_steps):
+        
+        unique_vals = self.colors.numpy()
+        
+        
+        def com_label_acc(img, obs, reward):
+            
+            label = obs[-1]
+            label[:, [0, -1]] = 0
+            label[[0, -1], :] = 0
+
+            label = (
+                (label[:, :, None, :] == unique_vals[None, None, :])
+                .all(-1)
+                .astype(np.int32)
+            )
+
+            if reward == 1:
+                label[label[:, :, 1] == 1, 0] = 1
+                label[label[:, :, 1] == 1, 1] = 0
+
+            elif reward == -1:
+                label[:, :, 0] = 1
+                label[:, :, 1:] = 0
+                
+            label = np.argmax(label, -1).T
+                
+            return (img[0].numpy() == label).all()
+
+        
+        env = SnakeGame(width=self.agent_args.width_and_height,
+                height=self.agent_args.width_and_height,
+                border=self.agent_args.border,
+                food_amount=1,
+                render_mode="human",
+                manhatten_fac = 0,
+                mode = "eval",
+                seed=0 + self.agent_args.seed,)
+
+        env = FrameStack(env)
+    
+        ar_acc = 0
+        label_acc = 0
+        ar_counter = 0
+        reward_acc = 0
+        
+        i = 0
+        
+        def start():
+            obs = env.reset()[0]
+            
+            for _ in range(3):
+                action = self.greedy_agent_action(obs[None, :])
+
+                obs, reward, done, truncated, info = env.step(action[0])
+        
+            return obs
+        
+        obs = start()
+        
+        for _ in tqdm(range(n_steps), desc = "Evaluating Env Model performance"):
+            
+            action = self.greedy_agent_action(obs[None, :])
+            ar, re, pred = self.pred_env(obs[None, :], action, with_raw = True)
+            
+            obs, reward, done, truncated, info = env.step(action[0])
+            
+            reward_acc += re[0] == reward
+            if reward == 0:
+                ar_acc += np.all(ar.numpy()[0] == obs[-1])
+                ar_counter += 1
+                label_acc += com_label_acc(pred, obs, reward)
+            
+            if done:
+                obs = start()
+            
+            i += 1
+            
+        return ar_acc/ar_counter, label_acc/ ar_counter, reward_acc / n_steps
+
 
 class Wrapper(LightningModule):
 
-    def __init__(self, args: NewArgs):
+    def __init__(self, args: NewArgs, agent: DoubleQNET, agent_args):
         super().__init__()
         self.args = args
         self.model = EnvApp(args)
@@ -230,6 +415,8 @@ class Wrapper(LightningModule):
         self.accuracy_metric = Accuracy(task="multiclass", num_classes=4)
         self.mean_loss_metric = MeanMetric()
         self.success_rate_metric = MeanMetric()
+        self.sampler = MarkovSampler(agent.model, self.model, args.device,  agent_args)
+        
 
     def forward(self, x):
         return self.model(x)
@@ -276,23 +463,28 @@ class Wrapper(LightningModule):
         success_rate = self.success_rate_metric(self.succes_rate(preds, y))
         self.log("val_success_rate", success_rate, prog_bar=True)
 
+    
+    def on_validation_epoch_end(self):
+        succ, imgacc, rew = self.sampler.env_model_performance(self.args.val_steps)
+        self.log("sampling/succ", succ, prog_bar = True)
+        self.log("sampling/imgacc", imgacc, prog_bar = False)
+        self.log("sampling/reward", rew, prog_bar = True)
+        
+        
+        
 
-def main():
-
-    with open(sys.argv[1], "r") as f:
-
-        args = NewArgs(**yaml.safe_load(f))
+def train(args: NewArgs):
 
     agent_args = BasicArgs(
-        seed=0,
-        n_envs=8,
-        manhatten_fac=0,
-        batch_size=32,
-        min_eps=0.05,
-        n_epoch_refil=1,
-        n_obs_reward=args.n_steps_fut + 1,
-        device = args.device
-    )
+            seed=0,
+            n_envs=8,
+            manhatten_fac=0,
+            batch_size=32,
+            min_eps=0.05,
+            n_epoch_refil=1,
+            n_obs_reward=args.n_steps_fut + 1,
+            device = args.device
+        )
 
     random.seed(agent_args.seed)
     np.random.seed(agent_args.seed)
@@ -341,7 +533,7 @@ def main():
         val_dataset, batch_size=args.batchsize, num_workers=args.n_workers
     )
 
-    wrapper = Wrapper(args)
+    wrapper = Wrapper(args, agent, agent_args)
 
     if args.test:
         args.run_name += "_test"
@@ -373,5 +565,13 @@ def main():
 
     trainer.fit(wrapper, train_loader, val_loader)
 
+def main():
+
+    with open(sys.argv[1], "r") as f:
+
+        args = NewArgs(**yaml.safe_load(f))
+
+    train(args)
+    
 if __name__ == "__main__":
     main()
