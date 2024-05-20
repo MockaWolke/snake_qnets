@@ -298,7 +298,8 @@ class MarkovSampler(nn.Module):
         x = torch.cat([obs[:, 0], obs[:, 1], obs[:, 2], action_mask], dim=-1)
         x = x.permute(0, 3, 2, 1)
 
-        pred = torch.argmax(self.env_model(x), dim=1)
+        with torch.no_grad():
+            pred = torch.argmax(self.env_model(x), dim=1)
         
         img = self.colors[pred].transpose(1, 2)
         img[:, [0, -1]] = 0.5
@@ -326,7 +327,7 @@ class MarkovSampler(nn.Module):
     
     def env_model_performance(self, n_steps):
         
-        unique_vals = self.colors.numpy()
+        unique_vals = self.colors.cpu().numpy()
         
         
         def com_label_acc(img, obs, reward):
