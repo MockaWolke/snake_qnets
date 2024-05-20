@@ -77,15 +77,14 @@ def gen_data(size, eps, agent, envs, agent_args, args):
 
     for idx in range(len(samples) - agent_args.n_obs_reward + 1):
 
-        _, _, _, _, actions = samples[idx]
 
         s_reward, s_terminated, old_obs = [], [], []
 
-        for i in range(agent_args.n_obs_reward):
+        for i in range(agent_args.n_obs_reward - 1):
 
-            new_obs, old, reward, terminated, _ = samples[
+            new_obs, old, reward, terminated, actions = samples[
                 idx + i
-            ]  # get respective future points
+            ]  
 
             s_reward.append(reward)
             s_terminated.append(terminated)
@@ -95,14 +94,16 @@ def gen_data(size, eps, agent, envs, agent_args, args):
             lambda x: np.stack(x, axis=1), (s_reward, s_terminated, old_obs)
         )
 
-        for tup in zip(old_obs, s_reward, s_terminated, actions):
-            old_obs, s_reward, s_terminated, actions = tup
+        for tup in zip(old_obs, s_reward, s_terminated, actions, new_obs):
+            old_obs, s_reward, s_terminated, actions, new_obs = tup
             old_obs[:, [0, -1]] = 0
             old_obs[:, :, [0, -1]] = 0
-            old_obs, label = old_obs[: args.n_steps_fut], old_obs[-1]
-            reward = s_reward[-2]
+            label = new_obs
+            label[:, [0, -1]] = 0
+            label[[0, -1], :] = 0
+            reward = s_reward[-1]
 
-            if s_terminated[:-2].any():
+            if s_terminated[:-1].any():
                 continue
 
             label = (
