@@ -244,7 +244,43 @@ def make_env(**kwars):
     return _init
 
 
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, num_stack=3):
+        super(FrameStack, self).__init__(env)
+        self.num_stack = num_stack
+        self.frames = []
+        self.observation_space = spaces.Box(
+            low=0,
+            high=1,
+            shape=(
+                num_stack,
+                env.height + env.border * 2,
+                env.width + env.border * 2,
+                3,
+            ),
+            dtype=np.float32,
+        )
 
+    def reset(self):
+        obs, info = self.env.reset()
+        self.frames = [obs for _ in range(self.num_stack)]
+        return self._get_observation(), info
+
+    def step(self, action):
+
+        obs, reward, done, truncated, info = self.env.step(action)
+        self.frames.pop(0)
+        self.frames.append(obs)
+        return self._get_observation(), reward, done, truncated, info
+
+    def _get_observation(self):
+        return np.stack(self.frames, axis=0).copy()
+
+def make_stack_env(num_stacks, **kwars):
+    def _init():
+        return FrameStack(SnakeGame(**kwars), num_stack = num_stacks)
+
+    return _init
 
 
 
