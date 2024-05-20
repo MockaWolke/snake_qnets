@@ -352,7 +352,7 @@ class MarkovSampler(nn.Module):
                 
             label = np.argmax(label, -1).T
                 
-            return (img[0].numpy() == label).all()
+            return (img[0].cpu().numpy() == label).all()
 
         
         env = SnakeGame(width=self.agent_args.width_and_height,
