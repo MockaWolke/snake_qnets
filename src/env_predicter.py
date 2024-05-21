@@ -356,6 +356,8 @@ class MarkovSampler(nn.Module):
         score = 0
 
         obs = env.reset()[0]
+        
+        self.env_model.eval()
 
         for _ in tqdm(range(n_steps), desc="Evaluating Env Model performance"):
 
@@ -368,7 +370,7 @@ class MarkovSampler(nn.Module):
                 # plt.axis("off")
                 
                 
-            ar, re, pred = self.pred_env(obs[None, :].copy(), action*-1, with_raw=True)
+            ar, re, pred = self.pred_env(obs[None, :].copy(), action, with_raw=True)
 
             # plt.subplot(1,5,4)
             # plt.imshow(ar[0])
@@ -410,6 +412,7 @@ class Wrapper(LightningModule):
     def __init__(self, args: NewArgs, agent: DoubleQNET, agent_args):
         super().__init__()
         self.args = args
+        self.agent_args = agent_args
         self.model = EnvApp(args)
         self.loss_fn = nn.CrossEntropyLoss(
             weight=torch.tensor([1, args.loss_weight, 1, args.loss_weight])
@@ -417,7 +420,7 @@ class Wrapper(LightningModule):
         self.accuracy_metric = Accuracy(task="multiclass", num_classes=4)
         self.mean_loss_metric = MeanMetric()
         self.success_rate_metric = MeanMetric()
-        self.sampler = MarkovSampler(agent.model, self.model, args.device, agent_args)
+        self.agent_model = agent.model
 
     def forward(self, x):
         return self.model(x)
@@ -471,7 +474,10 @@ class Wrapper(LightningModule):
         self.log("val_success_rate", success_rate, prog_bar=True)
 
     def on_validation_epoch_end(self):
-        succ, imgacc, rew, score = self.sampler.env_model_performance(self.args.val_steps)
+        
+        sampler = MarkovSampler(self.agent_model, self.model, self.args.device, self.agent_args)
+        
+        succ, imgacc, rew, score = sampler.env_model_performance(self.args.val_steps)
         self.log("sampling/succ", succ, prog_bar=True)
         self.log("sampling/imgacc", imgacc, prog_bar=False)
         self.log("sampling/reward", rew, prog_bar=True)
@@ -554,7 +560,13 @@ def train(args: NewArgs):
     train_data = data[int(len(data) * 0.2) :]
 
     train_dataset = EnvDataset(train_data)
+    
     val_dataset = EnvDataset(val_data)
+    val_set = {i for i in val_dataset}
+    
+    for i in tqdm(train_dataset, desc="Checking overlap"):
+        assert i not in val_set, "mix of data"
+
 
     train_loader = DataLoader(
         train_dataset,
@@ -596,6 +608,8 @@ def train(args: NewArgs):
     )
 
     trainer.fit(wrapper, train_loader, val_loader)
+
+    torch.save(wrapper.model.state_dict(), os.path.join(ckpt_path, "manual.ckpt"))
 
 
 def main():
