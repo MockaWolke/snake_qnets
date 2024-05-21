@@ -45,12 +45,29 @@ unique_vals = np.array(
     dtype=np.float32,
 )
 
-def preprocess(obs, label, action, reward):
+def preprocess_input(obs, actions, device):
+    
+    bs = obs.shape[0]
+    obs = torch.tensor(obs, device=device, dtype=torch.float32)
+    actions = torch.tensor(actions, device=device, dtype=torch.long)
 
-    obs = obs.copy()
+    actions *= -1
+
+    action_mask = torch.zeros(
+        (obs.shape[0], 16, 16, 3), dtype=torch.float32, device=device
+    )
+    action_mask[torch.arange(bs), :, :, actions + 1] = 1
+
+    assert (action_mask.sum(-1) == 1).all()
+
+    x = torch.cat([obs[:, 0], obs[:, 1], obs[:, 2], action_mask], dim=-1)
+    
+    return x
+
+
+def preprocess_label(label, reward):
+    
     label = label.copy()
-    obs[:, [0, -1]] = 0
-    obs[:, :, [0, -1]] = 0
     label[:, [0, -1]] = 0
     label[[0, -1], :] = 0
     
@@ -62,7 +79,6 @@ def preprocess(obs, label, action, reward):
     
     label = np.argmax(label, -1)
 
-    # if win set everythin true
     if reward == 1:
         mask = label == 1 
         label[mask] = 0
@@ -70,35 +86,67 @@ def preprocess(obs, label, action, reward):
     # everything false if loss
     elif reward == -1:
         label[:] = 0
+        
+    return label
+
+def pred_to_img(pred, colors, device):
+    
+    bs = pred.shape[0]
+    
+    img = colors[pred]
+    img[:, [0, -1]] = 0.5
+    img[:, :, [0, -1]] = 0.5
+        
+
+    flattened = pred.reshape(bs, -1)
+
+    rewards = torch.zeros(bs, dtype=torch.float32, device=device)
+
+    # if no red than -> loss
+    mask = (flattened == 2).any(1)
+
+    rewards = torch.where(mask, rewards, -1)
+
+    # if not loss and no green -> win
+    mask = torch.logical_and(mask, ~(flattened == 1).any(1))
+    rewards = torch.where(mask, 1, rewards)
+    
+    return img, rewards
+
+def preprocess(obs, label, action, reward):
 
     diffs = (obs[:-1] != obs[1:]).any(-1).sum((1, 2))
     if not np.isin(diffs, [0, 2, 3]).all():
-        
         raise ValueError(f"logic fucked {diffs}")
+        
+    x = preprocess_input(obs[None,:], torch.tensor([action])[None,:], "cpu").numpy()[0]
 
-    action_mask = np.zeros((16, 16, 3))
-    action_mask[:, :, action + 1] = 1
-    x = np.concatenate((obs[0], obs[1], obs[2], action_mask), axis=-1)
+    y = preprocess_label(label, reward)
+
+    # if reward==-1:
     
-    # fig = plt.figure(figsize=(10,4))
-    
-    # for i in range(3):
-    #     plt.subplot(1, 4, i + 1)
-    #     plt.imshow(obs[i])
+    #     fig = plt.figure(figsize=(10,4))
+        
+    #     for i in range(3):
+    #         plt.subplot(1, 4, i + 1)
+    #         plt.imshow(obs[i])
+    #         plt.axis("off")
+        
+    #     plt.subplot(1, 4, 4)
+    #     plt.imshow(label)
     #     plt.axis("off")
-    
-    # plt.subplot(1, 4, 4)
-    # plt.imshow(label)
-    # plt.axis("off")
-    # plt.title(f"{action} - {reward}")
-    # plt.show()
+    #     plt.title(f"{action} - {reward}")
+    #     plt.show()
 
-    
+        
 
-    return x, label
+    return x, y
 
 
 def gen_data(size, eps, agent, envs, agent_args, args):
+    
+    colors = torch.tensor(unique_vals)
+    
     data = []
 
     samples = []
@@ -115,16 +163,33 @@ def gen_data(size, eps, agent, envs, agent_args, args):
         range(steps + agent_args.n_obs_reward - 1), desc=f"sample for eps {eps}"
     ):
 
-        action = sample_func(envs, old_obs[:, -1])
+        actions = sample_func(envs, old_obs[:, -1])
 
-        actions = sample_eps_greedy(action, eps)
+        actions = sample_eps_greedy(actions, eps)
 
         new_obs, rewards, terminated, _, scores = envs.step(actions)
         labels = new_obs[:, -1]
 
         for obs, label, action, reward in zip(old_obs, labels, actions, rewards):
 
-            samples.append(preprocess(obs, label, action, reward))
+
+
+            x, y= preprocess(obs, label, action, reward)
+            
+            img, re = pred_to_img(torch.tensor(y)[None, :], colors, "cpu")
+            img = img[0].numpy()
+            
+            if reward == 0 and (not (img == label).all() or re[0]!= reward):
+                raise ValueError("Hey", not (img == label).all())
+                
+                
+            elif reward == 1 and (not (img != label).any(-1).sum() == 1 or re[0]!= reward):
+                raise ValueError("win false", (img != label).sum())
+            
+            elif reward == -1 and re[0]!= reward:
+                raise ValueError(reward, re)
+                
+            samples.append((x, y))
 
         old_obs = new_obs
     return samples
@@ -140,10 +205,12 @@ class EnvDataset(Dataset):
     def __getitem__(self, index):
 
         x, y = self.data[index]
-        x = torch.tensor(x, dtype=torch.float32).permute((2, 0, 1))
+        
+        x = torch.tensor(x, dtype=torch.float32)
 
         y = torch.tensor(y, dtype=torch.long)
-
+        
+        
         return x, y
 
     def __len__(self):
@@ -193,6 +260,8 @@ class EnvApp(Module):
         self.out_layer = nn.Conv2d(w * 2, 4, 1, padding=0)
 
     def forward(self, x):
+        
+        x = x.permute(0, 3, 1, 2)
 
         x = self.block1(x)
         x = self.block2(x)
@@ -244,46 +313,14 @@ class MarkovSampler(nn.Module):
         self, obs: torch.Tensor, actions: torch.Tensor, with_raw=False
     ) -> torch.Tensor:
 
-        # obs of length 3
-
-        if obs.shape[1] != 3 and len(obs.shape) != 5:
-            raise ValueError("Expected as batch")
-
-        obs = torch.tensor(obs, device=self.device, dtype=torch.float32)
-        actions = torch.tensor(actions, device=self.device, dtype=torch.long)
-
-        # blacken border
-        obs[:, :, [0, -1]] = 0
-        obs[:, :, :, [0, -1]] = 0
-
-        action_mask = torch.zeros(
-            (obs.shape[0], 16, 16, 3), dtype=torch.float32, device=self.device
-        )
-        action_mask[:, :, :, actions + 1] = 1
-
-        x = torch.cat([obs[:, 0], obs[:, 1], obs[:, 2], action_mask], dim=-1)
-        x = x.permute(0, 3, 2, 1)
+        
+        x = preprocess_input(obs, actions, self.device)
 
         with torch.no_grad():
             pred = torch.argmax(self.env_model(x), dim=1)
 
-        img = self.colors[pred].transpose(1, 2)
-        img[:, [0, -1]] = 0.5
-        img[:, :, [0, -1]] = 0.5
+        img, rewards = pred_to_img(pred, self.colors, device=self.device)
 
-        bs = obs.shape[0]
-        flattened = pred.view(bs, -1)
-
-        rewards = torch.zeros(bs, dtype=torch.float32, device=self.device)
-
-        # if no red than -> loss
-        mask = (flattened == 2).any(1)
-
-        rewards = torch.where(mask, rewards, -1)
-
-        # if not loss and no white -> win
-        mask = torch.logical_and(mask, ~(flattened == 3).any(1))
-        rewards = torch.where(mask, 1, rewards)
 
         if with_raw:
             return img.cpu(), rewards.cpu(), pred
@@ -292,30 +329,10 @@ class MarkovSampler(nn.Module):
 
     def env_model_performance(self, n_steps):
 
-        unique_vals = self.colors.cpu().numpy()
 
         def com_label_acc(img, obs, reward):
-
-            label = obs[-1]
-            label[:, [0, -1]] = 0
-            label[[0, -1], :] = 0
-
-            label = (
-                (label[:, :, None, :] == unique_vals[None, None, :])
-                .all(-1)
-                .astype(np.int32)
-            )
             
-            label = np.argmax(label, -1).T
-
-            # if win set everythin true
-            if reward == 1:
-                mask = label == 1 
-                label[mask] = 0
-
-            # everything false if loss
-            elif reward == -1:
-                label[:] = 0
+            label = preprocess_label(obs[-1].copy(), reward)
 
             return (img[0].cpu().numpy() == label).all()
 
@@ -327,7 +344,6 @@ class MarkovSampler(nn.Module):
             render_mode="human",
             manhatten_fac=0,
             mode="eval",
-            seed=0 + self.agent_args.seed,
         )
 
         env = FrameStack(env)
@@ -336,27 +352,39 @@ class MarkovSampler(nn.Module):
         label_acc = 0
         ar_counter = 0
         reward_acc = 0
+        scores = []
+        score = 0
 
         obs = env.reset()[0]
 
         for _ in tqdm(range(n_steps), desc="Evaluating Env Model performance"):
 
-            action = self.greedy_agent_action(obs[None, :])
-            ar, re, pred = self.pred_env(obs[None, :], action, with_raw=True)
+            action = self.greedy_agent_action(obs[None, :].copy())
+            
+            ar, re, pred = self.pred_env(obs[None, :].copy(), action, with_raw=True)
 
             obs, reward, done, truncated, info = env.step(action[0])
 
+            score += reward
+        
             reward_acc += re[0] == reward
             if reward == 0:
                 ar_acc += np.all(ar.numpy()[0] == obs[-1])
                 ar_counter += 1
-                label_acc += com_label_acc(pred, obs, reward)
+                label_acc += com_label_acc(torch.clone(pred), obs.copy(), reward)
+                
 
             if done:
+                scores.append(score)
+                score = 0
                 obs = env.reset()[0]
 
+        if not done:
+            scores.append(score)
+            
 
-        return ar_acc / ar_counter, label_acc / ar_counter, reward_acc / n_steps
+
+        return ar_acc / ar_counter, label_acc / ar_counter, reward_acc / n_steps, np.mean(scores)
 
 
 class Wrapper(LightningModule):
@@ -425,16 +453,16 @@ class Wrapper(LightningModule):
         self.log("val_success_rate", success_rate, prog_bar=True)
 
     def on_validation_epoch_end(self):
-        succ, imgacc, rew = self.sampler.env_model_performance(self.args.val_steps)
+        succ, imgacc, rew, score = self.sampler.env_model_performance(self.args.val_steps)
         self.log("sampling/succ", succ, prog_bar=True)
         self.log("sampling/imgacc", imgacc, prog_bar=False)
         self.log("sampling/reward", rew, prog_bar=True)
+        self.log("sampling/score", score, prog_bar=True)
 
 
 def train(args: NewArgs):
 
     agent_args = BasicArgs(
-        seed=0,
         n_envs=8,
         manhatten_fac=0,
         batch_size=32,
