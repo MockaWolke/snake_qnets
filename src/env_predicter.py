@@ -459,6 +459,12 @@ class Wrapper(LightningModule):
         self.log("sampling/reward", rew, prog_bar=True)
         self.log("sampling/score", score, prog_bar=True)
 
+    def state_dict(self):
+        return self.model.state_dict()
+
+    def load_state_dict(self, state_dict, strict=True):
+        self.model.load_state_dict(state_dict, strict=strict)
+
 
 def train(args: NewArgs):
 
