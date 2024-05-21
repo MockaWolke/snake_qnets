@@ -361,11 +361,29 @@ class MarkovSampler(nn.Module):
 
             action = self.greedy_agent_action(obs[None, :].copy())
             
-            ar, re, pred = self.pred_env(obs[None, :].copy(), action, with_raw=True)
+            # plt.figure(figsize=(10,4))
+            # for i,img in enumerate(obs):
+                # plt.subplot(1,5,1 + i)
+                # plt.imshow(img)
+                # plt.axis("off")
+                
+                
+            ar, re, pred = self.pred_env(obs[None, :].copy(), action*-1, with_raw=True)
+
+            # plt.subplot(1,5,4)
+            # plt.imshow(ar[0])
+            # plt.axis("off")
 
             obs, reward, done, truncated, info = env.step(action[0])
+            
+            # plt.subplot(1,5,5)
+            # plt.imshow(obs[-1])
+            # plt.axis("off")
+            # plt.title(str(action))
+            # plt.show()
 
             score += reward
+        
         
             reward_acc += re[0] == reward
             if reward == 0:
@@ -458,12 +476,6 @@ class Wrapper(LightningModule):
         self.log("sampling/imgacc", imgacc, prog_bar=False)
         self.log("sampling/reward", rew, prog_bar=True)
         self.log("sampling/score", score, prog_bar=True)
-
-    def state_dict(self):
-        return self.model.state_dict()
-
-    def load_state_dict(self, state_dict, strict=True):
-        self.model.load_state_dict(state_dict, strict=strict)
 
 
 def train(args: NewArgs):
