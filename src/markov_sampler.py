@@ -114,13 +114,13 @@ class MarkovSampler(nn.Module):
         
         obs = cast_to_tensor(obs, self.device, torch.float32)
         
-        actions = cast_to_tensor((-1, 0, 1), self.device, torch.long)
+        og_action = cast_to_tensor([-1, 0, 1], self.device, torch.long)
         
-        states, scores = self.gen_next_states(obs, actions)
+        states, scores = self.gen_next_states(obs, og_action)
 
         terminated = scores == -1
 
-        for _ in range(self.max_depth):
+        for i in range(self.max_depth):
             
             if terminated.all():
                 break
@@ -130,10 +130,14 @@ class MarkovSampler(nn.Module):
             
             terminated = (reward == -1) | terminated
             
-            scores += (1 - terminated.to(torch.float32)) * reward
+            scores += (1 - terminated.to(torch.float32)) * reward  * 0.99**i
+        
+        if len(set(scores)) == 1:
+            print("all scores same")
+            return self.greedy_agent_action(obs[None,:])[0]
             
             
-        return actions[torch.argmax(scores)]
+        return og_action[torch.argmax(scores)] * -1
 
 
     def gen_next_states(self, obs : torch.Tensor, actions = [-1, 0, 1]):
