@@ -73,7 +73,7 @@ class MarkovSampler(nn.Module):
         if with_raw:
             return img.cpu(), rewards.cpu(), pred
 
-        return img.cpu(), rewards.cpu()
+        return img, rewards
 
     def gen_worst_next_state(self, img: np.array, max_diff=60):
         
@@ -146,7 +146,7 @@ class MarkovSampler(nn.Module):
         
         for i, r in enumerate(rewards):
 
-            new_state = torch.tensor(self.gen_worst_next_state(next_states[i]))
+            new_state = cast_to_tensor(self.gen_worst_next_state(next_states[i]), self.device, torch.float32)
             
 
             if r == 1:
